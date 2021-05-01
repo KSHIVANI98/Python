@@ -1,0 +1,50 @@
+sys:1: DtypeWarning: Columns (10,24,25,50) have mixed types.Specify dtype option on import or set low_memory=False.
+sys:1: DtypeWarning: Columns (10,24,25,110) have mixed types.Specify dtype option on import or set low_memory=False.
+sys:1: DtypeWarning: Columns (10,24,25,50,110) have mixed types.Specify dtype option on import or set low_memory=False.
+Traceback (most recent call last):
+  File "sas2py_converted_script_ipm_rrc_renratio_regional_auto.py", line 2060, in <module>
+    Renew(stuff)
+  File "sas2py_converted_script_ipm_rrc_renratio_regional_auto.py", line 1188, in Renew
+    df_summ = df.groupby(['policy']).agg(
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/groupby/generic.py", line 951, in aggregate
+    result, how = self._aggregate(func, *args, **kwargs)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/base.py", line 416, in _aggregate
+    result = _agg(arg, _agg_1dim)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/base.py", line 383, in _agg
+    result[fname] = func(fname, agg_how)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/base.py", line 367, in _agg_1dim
+    return colg.aggregate(how)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/groupby/generic.py", line 240, in aggregate
+    return getattr(self, func)(*args, **kwargs)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/groupby/groupby.py", line 1553, in min
+    return self._agg_general(
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/groupby/groupby.py", line 1017, in _agg_general
+    result = self.aggregate(lambda x: npfunc(x, axis=self.axis))
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/groupby/generic.py", line 260, in aggregate
+    return self._python_agg_general(
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/groupby/groupby.py", line 1094, in _python_agg_general
+    return self._python_apply_general(f, self._selected_obj)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/groupby/groupby.py", line 892, in _python_apply_general
+    keys, values, mutated = self.grouper.apply(f, data, self.axis)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/groupby/ops.py", line 220, in apply
+    res = f(group)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/groupby/groupby.py", line 1062, in <lambda>
+    f = lambda x: func(x, *args, **kwargs)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/groupby/groupby.py", line 1017, in <lambda>
+    result = self.aggregate(lambda x: npfunc(x, axis=self.axis))
+  File "<__array_function__ internals>", line 5, in amin
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/numpy/core/fromnumeric.py", line 2830, in amin
+    return _wrapreduction(a, np.minimum, 'min', axis, None, out,
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/numpy/core/fromnumeric.py", line 85, in _wrapreduction
+    return reduction(axis=axis, out=out, **passkwargs)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/generic.py", line 11474, in stat_func
+    return self._reduce(
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/series.py", line 4249, in _reduce
+    return op(delegate, skipna=skipna, **kwds)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/nanops.py", line 129, in f
+    result = alt(values, axis=axis, skipna=skipna, **kwds)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/pandas/core/nanops.py", line 873, in reduction
+    result = getattr(values, meth)(axis)
+  File "/opt/miniconda3/envs/jupyter37/lib/python3.8/site-packages/numpy/core/_methods.py", line 43, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+TypeError: '<=' not supported between instances of 'float' and 'str'
