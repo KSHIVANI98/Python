@@ -13,10 +13,10 @@ Python File Location: C:\Users\vegopi\Desktop\sas2py_framework\Sas2Py_Repo\SAS2P
 
 ''' Importing necessary standard Python 3 modules
 Please uncomment the commented modules if necessary. '''
-# import pyodbc
-# import teradata
-# import textwrap
-# import subprocess
+#import pyodbc
+#import teradata
+#import textwrap
+#import subprocess
 
 
 ''' Importing necessary project specific core utility python modules.'''
@@ -32,10 +32,11 @@ import os
 import gc
 import pandas as pd
 import numpy as np
+import itertools
 from functools import reduce, partial
 sys.path.insert(
     1, r'C:\Users\vegopi\PycharmProjects\SAS2pyRepo\Sas2PyUtilCore')
-# from sas2py_sqlite3_db_funcs_lib import *
+#from sas2py_sqlite3_db_funcs_lib import *
 
 
 # Seting up logging info #
@@ -145,8 +146,8 @@ def df_creation_logging(dfName, tablename=None):
 
 def df_remove_indexCols(mrgResultTmpDf):
     # removing unnecessary columns to stop writing to sqlite table
-    # no_index_cols = [c for c in mrgResultTmpDf.columns if (c != "index_x" and c != "index_y" and  c != "index")]
-    # mrgResultTmpDf = mrgResultTmpDf[no_index_cols]
+    #no_index_cols = [c for c in mrgResultTmpDf.columns if (c != "index_x" and c != "index_y" and  c != "index")]
+    #mrgResultTmpDf = mrgResultTmpDf[no_index_cols]
     return mrgResultTmpDf.loc[:, ~mrgResultTmpDf.columns.str.startswith('index')]
     # df.loc[:,~df.columns.str.startswith('index')
 
@@ -164,7 +165,7 @@ def df_memory_mgmt(dfList):
     mem = ((process.memory_info()[0])/1024)/1024
     logging.info('Memory in use before clean up in MB:{}'.format(mem))
     dfL = [','.join([x for x in dfList])]
-    # del [[dfL]]
+    #del [[dfL]]
     # gc.collect()
     logging.info('Cleaning up memory consumed by the following data frames.')
     logging.info('{}'.format(dfL))
@@ -172,7 +173,7 @@ def df_memory_mgmt(dfList):
         del df
         df = pd.DataFrame()
         del df
-        # logging.info('Memory management is in progress for {}'.format(df.upper()))
+        #logging.info('Memory management is in progress for {}'.format(df.upper()))
     gc.collect()
     process = psutil.Process(os.getpid())
     mem = ((process.memory_info()[0])/1024)/1024
@@ -405,7 +406,7 @@ def GetPol(InfMon):
     end;
     run;
     """
-
+'''
 sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
 stuff = InfMon1
 while(stuff < LatestMon):
@@ -416,7 +417,7 @@ while(stuff < LatestMon):
 df = pd.DataFrame()
 df['stuff'] = stuff
 df.to_sql("junk1", con=sqliteConnection, if_exists='replace')
-
+'''
 ### SAS Source Code Line Numbers START:54 & END:547.###
 
 ''' WARNING  SAS User Defined Macro Identified. Macro has been re-written in python. Code validation and intendation is required.'''
@@ -453,7 +454,7 @@ def Renew(InfMon):
     df = pd.read_sql_query(
         "select * from inforce{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-    df_lower_colNames(df, 'inforce')
+    df_lower_colNames(df, 'inforce{}'.format(InfMon))
     df = df[['mvstate', 'policy', 'client', 'hhclient', 'cdtscore', 'seqagtno', 'inception', 'termincep',
              'duedate', 'mltprdind', 'bi_prm', 'cp_prm', 'cl_prm', 'memberind', 'primaryclass', 'mvyear', 'billplan']]
     df['duedatenum'] = df['duedate'].astype(int)
@@ -472,7 +473,9 @@ def Renew(InfMon):
     elif InfMon == InfMon2:
         BegDue = Beg2
         EndDue = End2
-
+    else:
+        BegDue = 0
+        EndDue = 0
     # ***Start manual effort here...
     # else if &InfMon = &InfMon2 then do;
     # BegDue = &Beg2;
@@ -500,158 +503,169 @@ def Renew(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'Gen1')
     # End manual effort.***
+    if len(df) != 0:
+        df['duedate'] = df['duedate'].astype(str)
+        df['duemon'] = df['duedate'].str.slice(0, 6).astype(int)
+        # if seqagtno^=.; # Manual effort require.
+        df = df.loc[df.seqagtno != np.nan]
+        df = df.loc[df.policy != np.nan]
+        # if policy^=.; # Manual effort require.
+        indexNames = df[(df['bi_prm'].isin([0, np.nan])) & (
+            df['cp_prm'].isin([0, np.nan])) & (df['cl_prm'].isin([0, np.nan]))].index
+        df.drop(indexNames, inplace=True)
+        # if bi_prm in (0 .) and cp_prm in (0 .) and cl_prm in (0 .) then delete; # Manual effort require.
+        df['productgen'] = 'Gen1'
 
-    df['duedate'] = df['duedate'].astype(str)
-    df['duemon'] = df['duedate'].str.slice(0, 6).astype(int)
-    # if seqagtno^=.; # Manual effort require.
-    df = df.loc[df.seqagtno != np.nan]
-    df = df.loc[df.policy != np.nan]
-    # if policy^=.; # Manual effort require.
-    indexNames = df[(df['bi_prm'].isin([0, np.nan])) & (
-        df['cp_prm'].isin([0, np.nan])) & (df['cl_prm'].isin([0, np.nan]))].index
-    df.drop(indexNames, inplace=True)
-    # if bi_prm in (0 .) and cp_prm in (0 .) and cl_prm in (0 .) then delete; # Manual effort require.
-    df['productgen'] = 'Gen1'
+        # ***Start manual effort here...
+        df['cov'] = [1 if (x not in [0, np.nan]) & ((y+z) != 0) else 0 if (y in [0, np.nan]) & (
+            z in [0, np.nan]) else 99 for x, y, z in zip(df['bi_prm'], df['cp_prm'], df['cl_prm'])]
+        # else if cp_prm in (0 .) and cl_prm in (0 .) then Cov=0;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    df['cov'] = [1 if (x not in [0, np.nan]) & ((y+z) != 0) else 0 if (y in [0, np.nan]) & (
-        z in [0, np.nan]) else 99 for x, y, z in zip(df['bi_prm'], df['cp_prm'], df['cl_prm'])]
-    # else if cp_prm in (0 .) and cl_prm in (0 .) then Cov=0;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else Cov=99;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else Cov=99;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        df.loc[(df['mvstate'].isin(
+            ['IA', 'IN', 'IL', 'MN', 'WI', 'OH'])), 'premier'] = 1
+        df.loc[(df['mvstate'].isin(['IA', 'IN', 'IL', 'MN', 'WI', 'OH']))
+               & (df['cdtscore'].isin(['6' '7' '8' '9'])), 'premier'] = 3
+        df.loc[(df['mvstate'].isin(['IA', 'IN', 'IL', 'MN', 'WI', 'OH']))
+               & (df['cdtscore'].isin(['3' '4' '5'])), 'premier'] = 2
+        # if mvstate in ('IA', 'IN', 'IL', 'MN', 'WI', 'OH') then do;
+        # if cdtscore in ('6' '7' '8' '9') then Premier=3;
+        # else if cdtscore in ('3' '4' '5') then Premier=2;
+        # else Premier=1;
+        # end;
+        # End manual effort.***
 
-    # ***Start manual effort here...
-    if (df['mvstate'].isin(['IA', 'IN', 'IL', 'MN', 'WI', 'OH'])).any():
-        df = df.loc[df['mvstate'].isin(['IA', 'IN', 'IL', 'MN', 'WI', 'OH'])]
-        df['premier'] = [3 if x in ['6' '7' '8' '9'] else 2 if x in [
-            '3' '4' '5'] else 1 for x in df['cdtscore']]
-    # if mvstate in ('IA', 'IN', 'IL', 'MN', 'WI', 'OH') then do;
-    # if cdtscore in ('6' '7' '8' '9') then Premier=3;
-    # else if cdtscore in ('3' '4' '5') then Premier=2;
-    # else Premier=1;
-    # end;
-    # End manual effort.***
+        # ***Start manual effort here...
+        # if mvstate in ('ND', 'NE') then do;
+        df.loc[(df['mvstate'].isin(['ND', 'NE'])), 'premier'] = 1
+        df.loc[(df['mvstate'].isin(['ND', 'NE'])) & (
+            df['cdtscore'].isin(['7', '8', '9'])), 'premier'] = 3
+        df.loc[(df['mvstate'].isin(['ND', 'NE'])) & (
+            df['cdtscore'].isin(['5', '6'])), 'premier'] = 2
+        # if cdtscore in ('7' '8' '9') then Premier=3;
+        # else if cdtscore in ('5' '6') then Premier=2;
+        # else Premier=1;
+        # end;
+        # End manual effort.***
 
-    # ***Start manual effort here...
-    # if mvstate in ('ND', 'NE') then do;
-    elif (df['mvstate'].isin(['ND', 'NE'])).any():
-	df = df.loc[df['mvstate'].isin(['ND', 'NE'])]
-        df['premier'] = [3 if x in ['7' '8' '9'] else 2 if x in [
-            '5' '6'] else 1 for x in df['cdtscore']]
-    # if cdtscore in ('7' '8' '9') then Premier=3;
-    # else if cdtscore in ('5' '6') then Premier=2;
-    # else Premier=1;
-    # end;
-    # End manual effort.***
+        # ***Start manual effort here...
+        # if mvstate in ('IA', 'IN', 'IL', 'MN', 'WI', 'OH') then do;
+        # if cdtscore in ('8', '9') then Premier2=4;
+        # else if cdtscore in ('5', '6', '7') then Premier2=3;
+        # else if cdtscore in ('2', '3', '4') then Premier2=2;
+        # else Premier2=1;
+        # end;
+        df.loc[(df['mvstate'].isin(
+            ['IA', 'IN', 'IL', 'MN', 'WI', 'OH'])), 'premier2'] = 1
+        df.loc[(df['mvstate'].isin(['IA', 'IN', 'IL', 'MN', 'WI', 'OH']))
+               & (df['cdtscore'].isin(['8', '9'])), 'premier2'] = 4
+        df.loc[(df['mvstate'].isin(['IA', 'IN', 'IL', 'MN', 'WI', 'OH']))
+               & (df['cdtscore'].isin(['5', '6', '7'])), 'premier2'] = 3
+        df.loc[(df['mvstate'].isin(['IA', 'IN', 'IL', 'MN', 'WI', 'OH']))
+               & (df['cdtscore'].isin(['2', '3', '4'])), 'premier2'] = 2
 
-    # ***Start manual effort here...
-    # if mvstate in ('IA', 'IN', 'IL', 'MN', 'WI', 'OH') then do;
-    # if cdtscore in ('8', '9') then Premier2=4;
-    # else if cdtscore in ('5', '6', '7') then Premier2=3;
-    # else if cdtscore in ('2', '3', '4') then Premier2=2;
-    # else Premier2=1;
-    # end;
-    if (df['mvstate'].isin(['IA', 'IN', 'IL', 'MN', 'WI', 'OH'])).any():
-        df = df.loc[df['mvstate'].isin(['IA', 'IN', 'IL', 'MN', 'WI', 'OH'])]
-	df['premier2'] = [4 if x in ['8', '9'] else 3 if x in ['5', '6', '7']
-	    else 2 if x in ['2', '3', '4'] else 1 for x in df['cdtscore']]
+        # End manual effort.***
 
-    # End manual effort.***
+        # ***Start manual effort here...
+        # if mvstate in ('ND', 'NE') then do;
+        # if cdtscore in ('8', '9') then Premier2=4;
+        # else if cdtscore in ('6', '7') then Premier2=3;
+        # else if cdtscore in ('5') then Premier2=2;
+        # else Premier2=1;
+        # end;
+        # elif df.mvstate.isin(['ND', 'NE']).any():
+        df.loc[(df['mvstate'].isin(['ND', 'NE'])), 'premier2'] = 1
+        df.loc[(df['mvstate'].isin(['ND', 'NE'])) & (
+            df['cdtscore'].isin(['8', '9'])), 'premier2'] = 4
+        df.loc[(df['mvstate'].isin(['ND', 'NE'])) & (
+            df['cdtscore'].isin(['6', '7'])), 'premier2'] = 3
+        df.loc[(df['mvstate'].isin(['ND', 'NE'])) & (
+            df['cdtscore'].isin(['5'])), 'premier2'] = 2
+        # End manual effort.***
 
-    # ***Start manual effort here...
-    # if mvstate in ('ND', 'NE') then do;
-    # if cdtscore in ('8', '9') then Premier2=4;
-    # else if cdtscore in ('6', '7') then Premier2=3;
-    # else if cdtscore in ('5') then Premier2=2;
-    # else Premier2=1;
-    # end;
-    if (df['mvstate'].isin(['ND', 'NE'])).any():
-        df = df.loc[df['mvstate'].isin(['ND', 'NE'])]
-	df['premier2'] = [4 if x in ['8', '9'] else 3 if x in [
-	    '6', '7'] else 2 if x == 5 else 1 for x in df['cdtscore']]
+        # ***Start manual effort here...
+        # if mltprdind in ("", "N") then Mulprod=0;
+        df['mulprod'] = [0 if x in (np.nan, 'N')
+                         else 1 for x in df['mltprdind']]
+        # End manual effort.***'''
 
-    # End manual effort.***
+        # ***Start manual effort here...
+        # else Mulprod=1;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # if mltprdind in ("" "N") then Mulprod=0;
-    df['mulprod'] = [0 if x in (np.nan, 'N') else 1 for x in df['mltprdind']]
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # if MEMBERIND in ("Y") then Member=1;
+        df['mulprod'] = [1 if x == 'Y' else 0 for x in df['memberind']]
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else Mulprod=1;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else Member=0;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # if MEMBERIND in ("Y") then Member=1;
-    df['mulprod'] = [1 if x == 'Y' else 0 for x in df['memberind']]
-    # End manual effort.***'''
+        df['termincep'] = df['termincep'].astype(str)
+        df['inception'] = df['inception'].astype(str)
+        df['tenure'] = (df['termincep'].str.slice(0, 4).astype(int)-df['inception'].str.slice(0, 4).astype(int)+df['termincep'].str.slice(4, 6).astype(int) -
+                        df['inception'].str.slice(4, 6).astype(int))/12+(df['termincep'].str.slice(6, 8).astype(int)-df['inception'].str.slice(6, 8).astype(int))/365
+        df['tenure'] = df['tenure'].apply(np.floor)
+        # if Tenure=. then tenure=0; # Manual effort require.
 
-    # ***Start manual effort here...
-    # else Member=0;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        df.loc[df.tenure == np.nan, 'tenure'] = 0
+        # else if tenure=4 then tenure=3;
+        # End manual effort.***'''
 
-    df['termincep'] = df['termincep'].astype(str)
-    df['inception'] = df['inception'].astype(str)
-    df['tenure'] = (df['termincep'].str.slice(0, 4).astype(int)-df['inception'].str.slice(0, 4).astype(int)+df['termincep'].str.slice(4, 6).astype(int) -
-                    df['inception'].str.slice(4, 6).astype(int))/12+(df['termincep'].str.slice(6, 8).astype(int)-df['inception'].str.slice(6, 8).astype(int))/365
-    df['tenure'] = df['tenure'].apply(np.floor)
-    # if Tenure=. then tenure=0; # Manual effort require.
+        # ***Start manual effort here...
+        df.loc[df.tenure == 4, 'tenure'] = 3
+        df.loc[df.tenure >= 5, 'tenure'] = 5
+        # else if tenure>=5 then tenure=5;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    df.loc[df.tenure == np.nan, 'tenure'] = 0
-    # else if tenure=4 then tenure=3;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # if primaryclass in (8031 8032 8033 8038 8039 1801 1802 1803 1808 1809 2801 2802 2803 2808 2809) then AssignedDrvAge=65;
+        # End manual effort.***'''
+        df['assigneddrvage'] = [65 if x in [8031, 8032, 8033, 8038, 8039, 1801, 1802, 1803, 1808, 1809, 2801, 2802, 2803, 2808, 2809] else 45 if x in [1851, 1852, 1853, 1858, 1859, 2851, 2852, 2853, 2858, 2859, 3851, 3852, 3853, 3858, 3859, 1861, 1862, 1863, 1868, 1869] else 30 if x in [2861, 2862, 2863, 2868, 2869, 3861, 3862, 3863, 3868, 3869, 4861, 4862, 4863, 4868, 4869] else 25 if x in [4871, 4872, 4873, 4878, 4879, 5871, 5872, 5873, 5878, 5879, 8708, 8709, 7871, 7872, 7873, 7878, 7879, 6871, 6872, 6873, 6878, 6879] else 1 if x in [1254, 1255, 1354, 1355, 2254, 2255, 2354, 2355, 1256, 1257, 1356, 1357, 2256, 2257, 2356, 2357, 1754, 1755, 1704, 1705, 2754, 2755,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               2704, 2705, 1756, 1757, 1706, 1707, 2756, 2757, 2706, 2707, 8064, 8065, 8164, 8165, 8074, 8075, 8174, 8175, 8084, 8085, 8184, 8185, 8094, 8095, 8194, 8195, 8066,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               8067, 8166, 8167, 8076, 8077, 8176, 8177, 8086, 8087, 8186, 8187, 8096, 8097, 8196, 8197, 8460, 8463, 8660, 8663, 8470, 8473, 8670, 8673, 8480, 8483, 8680, 8683,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               8490, 8493, 8690, 8693, 8466, 8468, 8666, 8668, 8476, 8478, 8676, 8678, 8486, 8488, 8686, 8688, 8496, 8498, 8696, 8698, 2871, 2872, 2873, 2878, 2879, 8964, 8965,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               8966, 8967, 8974, 8975, 8976, 8977, 8984, 8985, 8986, 8987, 8994, 8995, 8996, 8997, 1554, 1555, 1556, 1557, 2554, 2555, 2556, 2557] else x for x in df['primaryclass']]
 
-    # ***Start manual effort here...
-    df.loc[df.tenure == 4, 'tenure'] = 3
-    df.loc[df.tenure >= 5, 'tenure'] = 5
-    # else if tenure>=5 then tenure=5;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else if primaryclass in (1851 1852 1853 1858 1859 2851 2852 2853 2858 2859 3851 3852 3853 3858 3859 1861 1862 1863 1868 1869) then AssignedDrvAge=45;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # if primaryclass in (8031 8032 8033 8038 8039 1801 1802 1803 1808 1809 2801 2802 2803 2808 2809) then AssignedDrvAge=65;
-    # End manual effort.***'''
-    df['assigneddrvage'] = [65 if x in [8031, 8032, 8033, 8038, 8039, 1801, 1802, 1803, 1808, 1809, 2801, 2802, 2803, 2808, 2809] else 45 if x in [1851, 1852, 1853, 1858, 1859, 2851, 2852, 2853, 2858, 2859, 3851, 3852, 3853, 3858, 3859, 1861, 1862, 1863, 1868, 1869] else 30 if x in [2861, 2862, 2863, 2868, 2869, 3861, 3862, 3863, 3868, 3869, 4861, 4862, 4863, 4868, 4869] else 25 if x in [4871, 4872, 4873, 4878, 4879, 5871, 5872, 5873, 5878, 5879, 8708, 8709, 7871, 7872, 7873, 7878, 7879, 6871, 6872, 6873, 6878, 6879] else 1 if x in [1254, 1255, 1354, 1355, 2254, 2255, 2354, 2355, 1256, 1257, 1356, 1357, 2256, 2257, 2356, 2357, 1754, 1755, 1704, 1705, 2754, 2755,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           2704, 2705, 1756, 1757, 1706, 1707, 2756, 2757, 2706, 2707, 8064, 8065, 8164, 8165, 8074, 8075, 8174, 8175, 8084, 8085, 8184, 8185, 8094, 8095, 8194, 8195, 8066,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           8067, 8166, 8167, 8076, 8077, 8176, 8177, 8086, 8087, 8186, 8187, 8096, 8097, 8196, 8197, 8460, 8463, 8660, 8663, 8470, 8473, 8670, 8673, 8480, 8483, 8680, 8683,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           8490, 8493, 8690, 8693, 8466, 8468, 8666, 8668, 8476, 8478, 8676, 8678, 8486, 8488, 8686, 8688, 8496, 8498, 8696, 8698, 2871, 2872, 2873, 2878, 2879, 8964, 8965,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           8966, 8967, 8974, 8975, 8976, 8977, 8984, 8985, 8986, 8987, 8994, 8995, 8996, 8997, 1554, 1555, 1556, 1557, 2554, 2555, 2556, 2557] else x for x in df['primaryclass']]
+        # ***Start manual effort here...
+        # else if primaryclass in (2861 2862 2863 2868 2869 3861 3862 3863 3868 3869 4861 4862 4863 4868 4869) then AssignedDrvAge=30;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else if primaryclass in (1851 1852 1853 1858 1859 2851 2852 2853 2858 2859 3851 3852 3853 3858 3859 1861 1862 1863 1868 1869) then AssignedDrvAge=45;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else if primaryclass in (4871 4872 4873 4878 4879 5871 5872 5873 5878 5879 8708 8709 7871 7872 7873 7878 7879 6871 6872 6873 6878 6879) then AssignedDrvAge=25;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else if primaryclass in (2861 2862 2863 2868 2869 3861 3862 3863 3868 3869 4861 4862 4863 4868 4869) then AssignedDrvAge=30;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else if primaryclass in (1254 1255 1354 1355 2254 2255 2354 2355 1256 1257 1356 1357 2256 2257 2356 2357 1754 1755 1704 1705 2754 27552704 2705 1756 1757 1706 1707 2756 2757 2706 2707 8064 8065 8164 8165 8074 8075 8174 8175 8084 8085 8184 8185 8094 8095 8194 8195 80668067 8166 8167 8076 8077 8176 8177 8086 8087 8186 8187 8096 8097 8196 8197 8460 8463 8660 8663 8470 8473 8670 8673 8480 8483 8680 86838490 8493 8690 8693 8466 8468 8666 8668 8476 8478 8676 8678 8486 8488 8686 8688 8496 8498 8696 8698 2871 2872 2873 2878 2879 8964 89658966 8967 8974 8975 8976 8977 8984 8985 8986 8987 8994 8995 8996 8997 1554 1555 1556 1557 2554 2555 2556 2557) then AssignedDrvAge=1;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else if primaryclass in (4871 4872 4873 4878 4879 5871 5872 5873 5878 5879 8708 8709 7871 7872 7873 7878 7879 6871 6872 6873 6878 6879) then AssignedDrvAge=25;
-    # End manual effort.***'''
-
-    # ***Start manual effort here...
-    # else if primaryclass in (1254 1255 1354 1355 2254 2255 2354 2355 1256 1257 1356 1357 2256 2257 2356 2357 1754 1755 1704 1705 2754 27552704 2705 1756 1757 1706 1707 2756 2757 2706 2707 8064 8065 8164 8165 8074 8075 8174 8175 8084 8085 8184 8185 8094 8095 8194 8195 80668067 8166 8167 8076 8077 8176 8177 8086 8087 8186 8187 8096 8097 8196 8197 8460 8463 8660 8663 8470 8473 8670 8673 8480 8483 8680 86838490 8493 8690 8693 8466 8468 8666 8668 8476 8478 8676 8678 8486 8488 8686 8688 8496 8498 8696 8698 2871 2872 2873 2878 2879 8964 89658966 8967 8974 8975 8976 8977 8984 8985 8986 8987 8994 8995 8996 8997 1554 1555 1556 1557 2554 2555 2556 2557) then AssignedDrvAge=1;
-    # End manual effort.***'''
-
-    df['termincep'] = df['termincep'].astype(str)
-    ''''
-    df['vehage'] = df['termincep'].str.slice(1, 4)-df['mvyear']
-    df['vehage'] = df['vehage'].apply(np.floor)
-    df['vehage'] = max(df['vehage'])
-    '''
-    df['termincep'] = df['termincep'].astype(str)
-    df['termyr'] = df['termincep'].str.slice(0, 4).astype(int)
-    df['mvyear'] = df['mvyear'].astype(int)
-    df['vehage'] = np.maximum(0, (df['termyr']-df['mvyear']))
-    # if substr(billplan,1,3) in ("EFT") then EFT1=1; # Manual effort require.
-    df['eft1'] = 0
-    col = 'billplan'
-    conditions = [df[col].str.slice(0, 3) == 'EFT', df[col] == ""]
-    choices = [1, -1]
-    df['eft1'] = np.select(conditions, choices)
+        df['termincep'] = df['termincep'].astype(str)
+        ''''
+		df['vehage'] = df['termincep'].str.slice(1, 4)-df['mvyear']
+		df['vehage'] = df['vehage'].apply(np.floor)
+		df['vehage'] = max(df['vehage'])
+		'''
+        df['termincep'] = df['termincep'].astype(str)
+        df['termyr'] = df['termincep'].str.slice(0, 4).astype(int)
+        df['mvyear'] = df['mvyear'].astype(int)
+        df['vehage'] = np.maximum(0, (df['termyr']-df['mvyear']))
+        # if substr(billplan,1,3) in ("EFT") then EFT1=1; # Manual effort require.
+        df['eft1'] = 0
+        col = 'billplan'
+        conditions = [df[col].str.slice(0, 3) == 'EFT', df[col] == ""]
+        choices = [1, -1]
+        df['eft1'] = np.select(conditions, choices)
     # ***Start manual effort here...
     # else if billplan="" then EFT1=-1;
     # End manual effort.***'''
@@ -659,7 +673,7 @@ def Renew(InfMon):
     # ***Start manual effort here...
     # else EFT1=0;
     # End manual effort.***'''
-    # df = df_remove_indexCols(df)
+    #df = df_remove_indexCols(df)
     logging.info(
         "Gen1 created successfully with {} records".format(len(df)))
     # Push results data frame to Sqlite DB
@@ -672,7 +686,7 @@ def Renew(InfMon):
     '''Python Indentation required, DO loop start detected. Please intend the code
     if mod(&InfMon,100) >11 :
     if input(substr(DueDate,1,6),best12.) ==  &InfMon+89end	    else:
-    do if input(substr(DueDate,1,6),best12.)=&InfMon+1end '''	    '''SAS Comment:/********************************************************************************************************************************/
+    do if input(substr(DueDate,1,6),best12.)=&InfMon+1end '''	    '''SAS Comment:/********************************************************************************************************************************/ 
     *********************************************************************************
     Below python code is to execute standard SAS data step
     *********************************************************************************
@@ -697,7 +711,7 @@ def Renew(InfMon):
     df = pd.read_sql_query(
         "select * from inforcegenii{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-    df_lower_colNames(df, 'inforcegenii')
+    df_lower_colNames(df, 'inforcegenii{}'.format(InfMon))
     # Drop columns from source df data in datafram.
     df = df.drop(columns="product")
 
@@ -716,6 +730,9 @@ def Renew(InfMon):
     elif InfMon == InfMon2:
         BegDue = Beg2
         EndDue = End2
+    else:
+        BegDue = 0
+        EndDue = 0
 
     # ***Start manual effort here...
     # else if &InfMon = &InfMon2 then do;
@@ -745,209 +762,219 @@ def Renew(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'Gen2')
     # End manual effort.***
+    if len(df) != 0:
+        df['duemon'] = df['duedate']/100
+        # if seqagtno^=.; # Manual effort require.
+        df = df.loc[df.seqagtno != np.nan]
+        df = df.loc[df.policy != np.nan]
+        # if policy^=.; # Manual effort require.
+        indexNames = df[(df['bi_prm'].isin([0, np.nan])) & (df['comp_prm'].isin([0, np.nan])) & (
+            df['cmpf_prm'].isin([0, np.nan])) & (df['coll_prm'].isin([0, np.nan]))].index
+        df.drop(indexNames, inplace=True)
+        # if bi_prm in (0 .) and comp_prm in (0 .) and cmpf_prm in (0 .) and coll_prm in (0 .) then delete; # Manual effort require.
+        df['productgen'] = 'Gen2'
 
-    df['duemon'] = df['duedate']/100
-    # if seqagtno^=.; # Manual effort require.
-    df = df.loc[df.seqagtno != np.nan]
-    df = df.loc[df.policy != np.nan]
-    # if policy^=.; # Manual effort require.
-    indexNames = df[(df['bi_prm'].isin([0, np.nan])) & (df['comp_prm'].isin([0, np.nan])) & (
-        df['cmpf_prm'].isin([0, np.nan])) & (df['coll_prm'].isin([0, np.nan]))].index
-    df.drop(indexNames, inplace=True)
-    # if bi_prm in (0 .) and comp_prm in (0 .) and cmpf_prm in (0 .) and coll_prm in (0 .) then delete; # Manual effort require.
-    df['productgen'] = 'Gen2'
+        # ***Start manual effort here...
+        # if bi_prm not in (0 .) and sum(0,comp_prm,cmpf_prm,coll_prm)^=0 then Cov=1;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # if bi_prm not in (0 .) and sum(0,comp_prm,cmpf_prm,coll_prm)^=0 then Cov=1;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        df['cov'] = [1 if (a not in [0, np.nan]) & ((b+c+d) != 0) else 0 if (b in [0, np.nan]) & (c in [0, np.nan]) & (
+            d in [0, np.nan]) else 99 for a, b, c, d in zip(df['bi_prm'], df['comp_prm'], df['cmpf_prm'], df['coll_prm'])]
+        # else if comp_prm in (0 .) and cmpf_prm in (0 .) and coll_prm in (0 .) then Cov=0;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    df['cov'] = [1 if (a not in [0, np.nan]) & ((b+c+d) != 0) else 0 if (b in [0, np.nan]) & (c in [0, np.nan]) & (
-        d in [0, np.nan]) else 99 for a, b, c, d in zip(df['bi_prm'], df['comp_prm'], df['cmpf_prm'], df['coll_prm'])]
-    # else if comp_prm in (0 .) and cmpf_prm in (0 .) and coll_prm in (0 .) then Cov=0;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else Cov=99;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else Cov=99;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        df['premier'] = [3 if x in ['64', '66', '68', '70', '07', '08', '09', '10']
+                         else 2 if x in ['58', '60', '62', '04', '05', '06'] else 1 for x in df['cdtscore']]
+        # if cdtscore in ('64', '66', '68', '70', '07', '08', '09', '10') then Premier=3;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    df['premier'] = [3 if x in ['64', '66', '68', '70', '07', '08', '09', '10']
-                     else 2 if x in ['58', '60', '62', '04', '05', '06'] else 1 for x in df['cdtscore']]
-    # if cdtscore in ('64', '66', '68', '70', '07', '08', '09', '10') then Premier=3;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else if cdtscore in ('58', '60', '62', '04', '05', '06') then Premier=2;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else if cdtscore in ('58', '60', '62', '04', '05', '06') then Premier=2;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else Premier=1;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else Premier=1;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # if mvstate in ('IL', 'MN', 'WI', 'OH') then do;
+        # if cdtscore in ('68', '70') then Premier2=4;
+        # else if cdtscore in ('62', '64', '66') then Premier2=3;
+        # else if cdtscore in ('56', '58', '60') then Premier2=2;
+        # else Premier2=1;
+        # end;
+        # if df.mvstate.isin(['IL', 'MN', 'WI', 'OH']).any():
+        df.loc[(df['mvstate'].isin(['IL', 'MN', 'WI', 'OH'])), 'premier2'] = 1
+        df.loc[(df['mvstate'].isin(['IL', 'MN', 'WI', 'OH'])) & (
+            df['cdtscore'].isin(['68', '70'])), 'premier2'] = 4
+        df.loc[(df['mvstate'].isin(['IL', 'MN', 'WI', 'OH'])) & (
+            df['cdtscore'].isin(['62', '64', '66'])), 'premier2'] = 3
+        df.loc[(df['mvstate'].isin(['IL', 'MN', 'WI', 'OH'])) & (
+            df['cdtscore'].isin(['56', '58', '60'])), 'premier2'] = 2
+        # End manual effort.***
 
-    # ***Start manual effort here...
-    # if mvstate in ('IL', 'MN', 'WI', 'OH') then do;
-    # if cdtscore in ('68', '70') then Premier2=4;
-    # else if cdtscore in ('62', '64', '66') then Premier2=3;
-    # else if cdtscore in ('56', '58', '60') then Premier2=2;
-    # else Premier2=1;
-    # end;
-    if (df['mvstate'].isin(['IL', 'MN', 'WI', 'OH'])).any():
-        df = df.loc[df['mvstate'].isin(['IL', 'MN', 'WI', 'OH'])]
-        df['premier2'] = [4 if x in ['68', '70'] else 3 if x in ['62', '64', '66']
-            else 2 if x in ['56', '58', '60'] else 1 for x in df['cdtscore']]
+        # ***Start manual effort here...
+        # if mvstate in ('KY', 'WV') then do;
+        # if df.mvstate.isin(['KY', 'WV']).any():
+        df.loc[(df['mvstate'].isin(['KY', 'WV'])), 'premier2'] = 1
+        df.loc[(df['mvstate'].isin(['KY', 'WV'])) & (
+            df['cdtscore'].isin(['09', '10'])), 'premier2'] = 4
+        df.loc[(df['mvstate'].isin(['KY', 'WV'])) & (
+            df['cdtscore'].isin(['06', '07', '08'])), 'premier2'] = 3
+        df.loc[(df['mvstate'].isin(['KY', 'WV'])) & (
+            df['cdtscore'].isin(['03', '04', '05'])), 'premier2'] = 2
+        # else if cdtscore in ('06', '07', '08') then Premier2=3;
+        # else if cdtscore in ('03', '04', '05') then Premier2=2;
+        # else Premier2=1;
+        # end;
+        # End manual effort.***
 
-    # End manual effort.***
+        # ***Start manual effort here...
+        # if mvstate in ('GA', 'TN', 'IA', 'IN', 'NE', 'ND') then do;
+        # if df.mvstate.isin(['GA', 'TN', 'IA', 'IN', 'NE', 'ND']).any():
+        df.loc[(df['mvstate'].isin(
+            ['GA', 'TN', 'IA', 'IN', 'NE', 'ND'])), 'premier2'] = 1
+        df.loc[(df['mvstate'].isin(['GA', 'TN', 'IA', 'IN', 'NE', 'ND'])) & (
+            df['cdtscore'].isin(['R4', 'R6', 'R8', 'T0', 'T2', 'T4', 'T6', 'T8'])), 'premier2'] = 4
+        df.loc[(df['mvstate'].isin(['GA', 'TN', 'IA', 'IN', 'NE', 'ND'])) & (df['cdtscore'].isin(['J6', 'J8', 'L0', 'L2',
+                                                                                                  'L4', 'L6', 'L8', 'N0', 'N2', 'N4', 'N6', 'N8', 'P0', 'P2', 'P4', 'P6', 'P8', 'R0', 'R2'])), 'premier2'] = 4
+        df.loc[(df['mvstate'].isin(['GA', 'TN', 'IA', 'IN', 'NE', 'ND'])) & (df['cdtscore'].isin(
+            ['D8', 'F0', 'F2', 'F4', 'F6', 'F8', 'H0', 'H2', 'H4', 'H6', 'H8', 'J0', 'J2', 'J4'])), 'premier2'] = 3
 
-    # ***Start manual effort here...
-    # if mvstate in ('KY', 'WV') then do;
-    if (df['mvstate'].isin(['KY', 'WV'])).any():
-        df = df.loc[df['mvstate'].isin(['KY', 'WV'])]
-        df['premier2'] = [4 if x in ['09', '10'] else 3 if x in ['06', '07', '08']
-            else 2 if x in ['03', '04', '05'] else 1 for x in df['cdtscore']]
-    # else if cdtscore in ('06', '07', '08') then Premier2=3;
-    # else if cdtscore in ('03', '04', '05') then Premier2=2;
-    # else Premier2=1;
-    # end;
-    # End manual effort.***
+        # if cdtscore in ('R4', 'R6', 'R8', 'T0', 'T2', 'T4', 'T6', 'T8') then Premier2=4;
+        # else if cdtscore in ('J6', 'J8', 'L0', 'L2', 'L4', 'L6', 'L8', 'N0', 'N2', 'N4', 'N6', 'N8', 'P0', 'P2', 'P4', 'P6', 'P8', 'R0', 'R2') then Premier2=3;
+        # else if cdtscore in ('D8', 'F0', 'F2', 'F4', 'F6', 'F8', 'H0', 'H2', 'H4', 'H6', 'H8', 'J0', 'J2', 'J4') then Premier2=2;
+        # else Premier2=1;
+        # end;
+        # End manual effort.***
 
-    # ***Start manual effort here...
-    # if mvstate in ('GA', 'TN', 'IA', 'IN', 'NE', 'ND') then do;
-    if (df['mvstate'].isin(['GA', 'TN', 'IA', 'IN', 'NE', 'ND'])).any():
-        df = df.loc[df['mvstate'].isin(['GA', 'TN', 'IA', 'IN', 'NE', 'ND'])]
-        df['premier2'] = [4 if x in ['R4', 'R6', 'R8', 'T0', 'T2', 'T4', 'T6', 'T8'] else 3 if x in ['J6', 'J8', 'L0', 'L2', 'L4', 'L6', 'L8', 'N0', 'N2', 'N4', 'N6', 'N8', 'P0',
-            'P2', 'P4', 'P6', 'P8', 'R0', 'R2'] else 2 if x in ['D8', 'F0', 'F2', 'F4', 'F6', 'F8', 'H0', 'H2', 'H4', 'H6', 'H8', 'J0', 'J2', 'J4'] else 1 for x in df['cdtscore']]
+        # ***Start manual effort here...
+        # if mltprdind in (" ", "N", "B", "D") then Mulprod=0;
+        df['mulprod'] = [0 if x in [np.nan, "N", "B", "D"]
+                         else 1 for x in df['mltprdind']]
+        # End manual effort.***'''
 
-    # if cdtscore in ('R4', 'R6', 'R8', 'T0', 'T2', 'T4', 'T6', 'T8') then Premier2=4;
-    # else if cdtscore in ('J6', 'J8', 'L0', 'L2', 'L4', 'L6', 'L8', 'N0', 'N2', 'N4', 'N6', 'N8', 'P0', 'P2', 'P4', 'P6', 'P8', 'R0', 'R2') then Premier2=3;
-    # else if cdtscore in ('D8', 'F0', 'F2', 'F4', 'F6', 'F8', 'H0', 'H2', 'H4', 'H6', 'H8', 'J0', 'J2', 'J4') then Premier2=2;
-    # else Premier2=1;
-    # end;
-    # End manual effort.***
+        # ***Start manual effort here...
+        # else Mulprod=1;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # if mltprdind in (" ", "N", "B", "D") then Mulprod=0;
-    df['mulprod'] = [0 if x in [np.nan, "N", "B", "D"]
-                     else 1 for x in df['mltprdind']]
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        df['pifd'] = [0 if x in (np.nan, "N") else 1 for x in df['pifind']]
+        # if PIFIND in ("" "N") then PIFD=0;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else Mulprod=1;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else PIFD=1;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    df['pifd'] = [0 if x in (np.nan, "N") else 1 for x in df['pifind']]
-    # if PIFIND in ("" "N") then PIFD=0;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        df['member'] = [1 if x == 'Y' else 0 for x in df['memberind']]
+        # if MEMBERIND in ("Y") then Member=1;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else PIFD=1;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else Member=0;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    df['member'] = [1 if x == 'Y' else 0 for x in df['memberind']]
-    # if MEMBERIND in ("Y") then Member=1;
-    # End manual effort.***'''
+        df['cved'] = df['clmviolno']
+        # if CVED=. then CVED=99; # Manual effort require.
+        df.loc[df.cved == np.nan, 'cved'] = 99
 
-    # ***Start manual effort here...
-    # else Member=0;
-    # End manual effort.***'''
+        df['termincep'] = df['termincep'].astype(str)
+        df['inception'] = df['inception'].astype(str)
+        df['termyear'], df['termmonth'], df['termday'] = df['termincep'].str.slice(0, 4).astype(
+            int), df['termincep'].str.slice(4, 6).astype(int), df['termincep'].str.slice(6, 8).astype(int)
+        df['incepyear'], df['incepmonth'], df['incepday'] = df['inception'].str.slice(0, 4).astype(
+            int), df['inception'].str.slice(4, 6).astype(int), df['inception'].str.slice(6, 8).astype(int)
+        df['maxtendte_new'] = pd.to_datetime(df["maxtendte"])
+        df['maxyear_1'], df['maxmonth_1'], df['maxday_1'] = df['maxtendte_new'].dt.year, df['maxtendte_new'].dt.month, df['maxtendte_new'].dt.day
 
-    df['cved'] = df['clmviolno']
-    # if CVED=. then CVED=99; # Manual effort require.
-    df.loc[df.cved == np.nan, 'cved'] = 99
+        # if maxtendte^=. then Tenure=floor(substr(termincep,5,4)-year(maxtendte)+(substr(termincep,9,2)-month(maxtendte))/12+(substr(termincep,11,2)-day(maxtendte))/365);
+        df.loc[~(df['maxtendte'].isnull()), ['maxyear', 'maxmonth', 'maxday']] = df.loc[~(
+            df['maxtendte_new'].isnull()), ['maxyear_1', 'maxmonth_1', 'maxday_1']].values.tolist()
+        df = df.drop(columns=['maxtendte_new', 'maxyear_1',
+                              'maxmonth_1', 'maxday_1'])
+        df['maxyear'], df['maxmonth'], df['maxday'] = df['maxyear'].fillna(
+            0), df['maxmonth'].fillna(0), df['maxday'].fillna(0)
+        df['maxyear'], df['maxmonth'], df['maxday'] = df['maxyear'].astype(
+            int), df['maxmonth'].astype(int), df['maxday'].astype(int)
+        # End manual effort.***
+        df['tenure1_temp1'] = df['termyear']-df['maxyear'] + \
+            ((df['termmonth']-df['maxmonth'])/12) + \
+            ((df['termday']-df['maxday'])/365)
+        df['tenure1_temp2'] = df['termyear']-df['incepyear'] + \
+            ((df['termmonth']-df['incepmonth'])/12) + \
+            ((df['termday']-df['incepday'])/365)
 
-    df['termincep'] = df['termincep'].astype(str)
-    df['inception'] = df['inception'].astype(str)
-    df['termyear'], df['termmonth'], df['termday'] = df['termincep'].str.slice(4, 8).astype(
-        int), df['termincep'].str.slice(8, 10).astype(int), df['termincep'].str.slice(10, 12).astype(int)
-    df['incepyear'], df['incepmonth'], df['incepday'] = df['inception'].str.slice(4, 8).astype(
-        int), df['inception'].str.slice(8, 10).astype(int), df['inception'].str.slice(10, 12).astype(int)
-    df['maxtendte_new'] = pd.to_datetime(df["maxtendte"])
-    df['maxyear_1'], df['maxmonth_1'], df['maxday_1'] = df["maxtendte_new"].dt.year, df["maxtendte_new"].dt.month, df["maxtendte_new"].dt.day
+        df.loc[~(df['maxtendte'].isnull()), 'tenure'] = df.loc[~(
+            df['maxtendte'].isnull()), 'tenure1_temp1']
+        df['tenure'] = df['tenure'].apply(np.floor)
+        df.loc[df['maxtendte'].isnull(
+        ), 'tenure'] = df.loc[df['maxtendte'].isnull(), 'tenure1_temp2']
+        df['tenure'] = df['tenure'].apply(np.floor)
+        # End manual effort.***'''
 
-    # if maxtendte^=. then Tenure=floor(substr(termincep,5,4)-year(maxtendte)+(substr(termincep,9,2)-month(maxtendte))/12+(substr(termincep,11,2)-day(maxtendte))/365);
-    df.loc[~(df['maxtendte'].isnull()), ['maxyear', 'maxmonth', 'maxday']] = df.loc[~(
-        df['maxtendte_new'].isnull()), ["maxyear_1", "maxmonth_1", "maxday_1"]].values.tolist()
-    df = df.drop(columns=['maxtendte_new', 'maxyear_1',
-                          'maxmonth_1', 'maxday_1'])
-    df['maxyear'], df['maxmonth'], df['maxday'] = df['maxyear'].fillna(
-        0), df['maxmonth'].fillna(0), df['maxday'].fillna(0)
-    df['maxyear'], df['maxmonth'], df['maxday'] = df['maxyear'].astype(
-        int), df['maxmonth'].astype(int), df['maxday'].astype(int)
-    # End manual effort.***
-    df['tenure1_temp1'] = df['termyear']-df['maxyear'] + \
-        ((df['termmonth']-df['maxmonth'])/12) + \
-        ((df['termday']-df['maxday'])/365)
-    df['tenure1_temp2'] = df['termyear']-df['incepyear'] + \
-        ((df['termmonth']-df['incepmonth'])/12) + \
-        ((df['termday']-df['incepday'])/365)
+        # if Tenure=. then tenure=0; # Manual effort require.
+        df.loc[df.tenure == np.nan, 'tenure'] = 0
+        # ***Start manual effort here...
+        df.loc[df.tenure == 4, 'tenure'] = 3
+        df.loc[df.tenure >= 5, 'tenure'] = 5
+        # else if tenure=4 then tenure=3;
+        # End manual effort.***'''
 
-    df.loc[~(df['maxtendte'].isnull()), 'tenure'] = df.loc[~(
-        df['maxtendte'].isnull()), 'tenure1_temp1']
-    df['tenure'] = df['tenure'].apply(np.floor)
-    df.loc[df['maxtendte'].isnull(
-    ), 'tenure'] = df.loc[df['maxtendte'].isnull(), 'tenure1_temp2']
-    df['tenure'] = df['tenure'].apply(np.floor)
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else if tenure>=5 then tenure=5;
+        # End manual effort.***'''
 
-    # if Tenure=. then tenure=0; # Manual effort require.
-    df.loc[df.tenure == np.nan, 'tenure'] = 0
-    # ***Start manual effort here...
-    df.loc[df.tenure == 4, 'tenure'] = 3
-    df.loc[df.tenure >= 5, 'tenure'] = 5
-    # else if tenure=4 then tenure=3;
-    # End manual effort.***'''
+        df['prins'] = df['prinscde']
+        df['ageo'] = df['termyear'] - pd.to_datetime(df['obirthdte']).dt.year+((df['termmonth']-(pd.to_datetime(
+            df['obirthdte']).dt.month))/12)+((df['termday']-(pd.to_datetime(df['obirthdte']).dt.day))/365)
+        df['ageo'] = df['ageo'].apply(np.floor)
+        df['agey'] = df['termyear'] - pd.to_datetime(df['ybrthdte']).dt.year+((df['termmonth']-(pd.to_datetime(
+            df['ybrthdte']).dt.month))/12)+((df['termday']-(pd.to_datetime(df['ybrthdte']).dt.day))/365)
+        df['agey'] = df['agey'].apply(np.floor)
 
-    # ***Start manual effort here...
-    # else if tenure>=5 then tenure=5;
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # if vhlevel in (0 99) then vhlevel=.;
+        df.loc[df['vhlevel'].isin(['0', '99']), 'vhlevel'] = np.nan
+        # End manual effort.***'''
 
-    df['prins'] = df['prinscde']
-    df['ageo'] = df['termyear'] - pd.to_datetime(df['obirthdte']).dt.year+((df['termmonth']-(pd.to_datetime(
-        df['obirthdte']).dt.month))/12)+((df['termday']-(pd.to_datetime(df['obirthdte']).dt.day))/365)
-    df['ageo'] = df['ageo'].apply(np.floor)
-    df['agey'] = df['termyear'] - pd.to_datetime(df['ybrthdte']).dt.year+((df['termmonth']-(pd.to_datetime(
-        df['ybrthdte']).dt.month))/12)+((df['termday']-(pd.to_datetime(df['ybrthdte']).dt.day))/365)
-    df['agey'] = df['agey'].apply(np.floor)
+        df['mvyear'] = df['mvyear'].astype(int)
+        df['vehage'] = np.maximum(0, (df['termyear']-df['mvyear']))
+        # if substr(billplan,1,3) in ("EFT") then EFT1=1; # Manual effort require.
+        df['eft1'] = 0
+        col = 'billplan'
+        conditions = [df[col].str.slice(0, 3) == 'EFT', df[col] == ""]
+        choices = [1, -1]
+        df['eft1'] = np.select(conditions, choices)
 
-    # ***Start manual effort here...
-    # if vhlevel in (0 99) then vhlevel=.;
-    df.loc[df['vhlevel'].isin(['0', '99']), 'vhlevel'] = np.nan
-    # End manual effort.***'''
+        # ***Start manual effort here...
+        # else if billplan="" then EFT1=-1;
+        # End manual effort.***'''
 
-    df['termincep'] = df['termincep'].astype(str)
-    df['termyr'] = df['termincep'].str.slice(0, 4)
-    df['mvyear'] = df['mvyear'].astype(int)
-    df['vehage'] = np.maximum(0, (df['termyr']-df['mvyear']))
-    # if substr(billplan,1,3) in ("EFT") then EFT1=1; # Manual effort require.
-    df['eft1'] = 0
-    col = 'billplan'
-    conditions = [df[col].str.slice(0, 3) == 'EFT', df[col] == ""]
-    choices = [1, -1]
-    df['eft1'] = np.select(conditions, choices)
+        # ***Start manual effort here...
+        # else EFT1=0;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else if billplan="" then EFT1=-1;
-    # End manual effort.***'''
+        # if AAADRHHIND="Y" then AAADriveDisc=1; # Manual effort require.
+        df['aaadrivedisc'] = [1 if x == 'Y' else 0 for x in df['aaadrhhind']]
+        # ***Start manual effort here...
+        # else AAADriveDisc=0;
+        # End manual effort.***'''
 
-    # ***Start manual effort here...
-    # else EFT1=0;
-    # End manual effort.***'''
+        # keep mvstate policy client hhclient clmviolno cdtscore seqagtno maxtendte inception termincep DueMon mltprdind bi_prm comp_prm cmpf_prm coll_prm MEMBERINDprinscde ybrthdte obirthdte vhlevel mvyear productgen Cov Premier Premier2 Mulprod Member CVED Tenure prins AgeO AgeY VehAge EFT1 PIFIND PIFD AAADriveDisc;
+        # End manual effort.***
 
-    # if AAADRHHIND="Y" then AAADriveDisc=1; # Manual effort require.
-    df['aaadrivedisc'] = [1 if x == 'Y' else 0 for x in df['aaadrhhind']]
-    # ***Start manual effort here...
-    # else AAADriveDisc=0;
-    # End manual effort.***'''
-
-    # keep mvstate policy client hhclient clmviolno cdtscore seqagtno maxtendte inception termincep DueMon mltprdind bi_prm comp_prm cmpf_prm coll_prm MEMBERINDprinscde ybrthdte obirthdte vhlevel mvyear productgen Cov Premier Premier2 Mulprod Member CVED Tenure prins AgeO AgeY VehAge EFT1 PIFIND PIFD AAADriveDisc;
-    # End manual effort.***
-
-    # Keep columns in the taget df data in datafram.
-    df = df[['cdtscore', 'comp_prm', 'vehage', 'obirthdte', 'member', 'mvyear', 'cved', 'maxtendte', 'policy', 'memberind', 'prinscde', 'eft1', 'seqagtno', 'cov', 'ybrthdte', 'coll_prm', 'duemon', 'mltprdind', 'prins',
-             'aaadrivedisc', 'client', 'pifind', 'mvstate', 'cmpf_prm', 'premier', 'premier2', 'productgen', 'mulprod', 'hhclient', 'tenure', 'ageo', 'clmviolno', 'inception', 'termincep', 'vhlevel', 'agey', 'bi_prm', 'pifd']]
-    df = df_remove_indexCols(df)
+        # Keep columns in the taget df data in datafram.
+        df = df[['cdtscore', 'comp_prm', 'vehage', 'obirthdte', 'member', 'mvyear', 'cved', 'maxtendte', 'policy', 'memberind', 'prinscde', 'eft1', 'seqagtno', 'cov', 'ybrthdte', 'coll_prm', 'duemon', 'mltprdind', 'prins',
+                 'aaadrivedisc', 'client', 'pifind', 'mvstate', 'cmpf_prm', 'premier', 'premier2', 'productgen', 'mulprod', 'hhclient', 'tenure', 'ageo', 'clmviolno', 'inception', 'termincep', 'vhlevel', 'agey', 'bi_prm', 'pifd']]
+        df = df_remove_indexCols(df)
     logging.info(
         "Gen2 created successfully with {} records".format(len(df)))
 
@@ -976,15 +1003,18 @@ def Renew(InfMon):
     Gen2 = Gen2.drop(columns=["termincep", "inception"])
     df = pd.concat([Gen1, Gen2], ignore_index=True, sort=False)
     # if cov=1 then VehFullCov=1; # Manual effort require.
-    df['vehfullcov'] = [1 if x == 1 else 0 for x in df['cov']]
-    # ***Start manual effort here...
-    # else VehFullCov=0;
-    # End manual effort.***'''
+    if len(df) != 0:
+        df['vehfullcov'] = [1 if x == 1 else 0 for x in df['cov']]
+        # ***Start manual effort here...
+        # else VehFullCov=0;
+        # End manual effort.***'''
 
-    # Keep columns in the taget df data in datafram.
-    df = df[['member', 'cved', 'policy', 'vhlevel', 'vehage', 'eft1', 'seqagtno', 'cov', 'duemon', 'aaadrivedisc', 'prins', 'client', 'pifind',
+        # Keep columns in the taget df data in datafram.
+        df = df[['member', 'cved', 'policy', 'vhlevel', 'vehage', 'eft1', 'seqagtno', 'cov', 'duemon', 'aaadrivedisc', 'prins', 'client', 'pifind',
              'vehfullcov', 'mvstate', 'premier', 'premier2', 'productgen', 'mulprod', 'hhclient', 'tenure', 'ageo', 'assigneddrvage', 'agey', 'pifd']]
-    df = df_remove_indexCols(df)
+        df = df_remove_indexCols(df)
+    if 'level_0' in df.columns:
+        df = df.drop(columns="level_0")
     logging.info(
         "Renew1 created successfully with {} records".format(len(df)))
     # Push results data frame to Sqlite DB
@@ -1029,7 +1059,7 @@ def Renew(InfMon):
     sqliteConnection.close()
     #*******************************End of Data Step Process**************************************************#
 
-# Sql Code Start and End Lines - 298&301 #
+    # Sql Code Start and End Lines - 298&301 #
     '''***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************'''
@@ -1056,18 +1086,20 @@ def Renew(InfMon):
     df = pd.read_sql_query("select * from Renew2 ", sqliteConnection)
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'Renew2')
-    '''
-    # ***Start manual effort here...
-    df.loc[df['community'].isin(
-        ['O002', 'O089', 'K006', 'V004']), 'aaa_ec'] = 1
-    # if community in ('O002', 'O089', 'K006', 'V004') then AAA_EC=1;
-    # End manual effort.***
-    '''
-    # if seqagtno=379346 then agent=3; # Manual effort require.
-    df.loc[df.seqagtno == 379346, 'agent'] = 3
-    df = df_remove_indexCols(df)
+    if len(df) != 0:
+        # ***Start manual effort here...
+        df.loc[df['community'].isin(
+            ['O002', 'O089', 'K006', 'V004']), 'aaa_ec'] = 1
+        # if community in ('O002', 'O089', 'K006', 'V004') then AAA_EC=1;
+        # End manual effort.***
+
+        # if seqagtno=379346 then agent=3; # Manual effort require.
+        df.loc[df.seqagtno == 379346, 'agent'] = 3
+        df = df_remove_indexCols(df)
     logging.info(
         "Renew2 created successfully with {} records".format(len(df)))
+    if 'level_0' in df.columns:
+        df = df.drop(columns="level_0")
     # Push results data frame to Sqlite DB
     df.to_sql("Renew2", con=sqliteConnection, if_exists='replace')
     # Close connection to Sqlite work data base
@@ -1080,7 +1112,7 @@ def Renew(InfMon):
 
     if InfRen1 < LatestMon:
         Join1(InfMon)
-    else:
+    elif InfRen1 != LatestMon+1:
         Join2(InfMon)
 
     #*******************************End of Data Step Process**************************************************#
@@ -1088,8 +1120,8 @@ def Renew(InfMon):
     WARNING: Below SAS step has not converted in this release.
     proc summary data=Renew6 nway;
     class mvstate productgen policy;
-    var DueMon agent AAA_EC cov vehfullcov premier premier2 mulprod tenure CVED renew_1mon renew_2mon Member prins AssignedDrvAge vhlevel VehAge EFT1 PIFDAAADriveDisc;
-    output out=Hhld1 (drop=_type_ rename=_freq_=VehCnt)max(DueMon agent AAA_EC VehFullCov premier premier2 mulprod tenure CVED renew_1mon renew_2mon Member prins AssignedDrvAge AgeO vhlevel EFT1 PIFDAAADriveDisc)=sum(cov)=CovSum mean(cov)=CovAvg max(cov)=CovMax min(cov AssignedDrvAge AgeY vhlevel VehAge)=CovMin AssignedDrvY AgeY vhlevelB1 VehAgeN1;
+    var DueMon agent AAA_EC cov vehfullcov premier premier2 mulprod tenure CVED renew_1mon renew_2mon Member prins AssignedDrvAge vhlevel VehAge EFT1 PIFD AAADriveDisc;
+    output out=Hhld1 (drop=_type_ rename=_freq_=VehCnt)max(DueMon agent AAA_EC VehFullCov premier premier2 mulprod tenure CVED renew_1mon renew_2mon Member prins AssignedDrvAge AgeO vhlevel EFT1 PIFD AAADriveDisc)=sum(cov)=CovSum mean(cov)=CovAvg max(cov)=CovMax min(cov AssignedDrvAge AgeY vhlevel VehAge)=CovMin AssignedDrvY AgeY vhlevelB1 VehAgeN1;
     run;
     '''
 
@@ -1098,12 +1130,18 @@ def Renew(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'Renew6')
     df = df_remove_indexCols(df)
-    df_summ = df.groupby(['mvstate', 'productgen', 'policy']).agg({'duemon': 'max', 'agent': 'max', 'aaa_ec': 'max', 'vehfullcov': 'max', 'premier': 'max', 'premier2': 'max', 'mulprod': 'max', 'tenure': 'max', 'cved': 'max', 'renew_1mon': 'max', 'renem_2mon': 'max', 'member': 'max', 'prins': 'max', 'assigneddrvage': 'max', 'ageo': 'max', 'vhlevel': 'max', 'eft1': 'max', 'pifdaaadrivedisc': 'max',
-                                                                   'cov': 'sum', 'cov': 'mean', 'cov': 'max', 'cov': 'min', 'assigned4drvage': 'min', 'agey': 'min', 'vhlevel': 'min', 'vehage': 'min'})
-    df = df.rename(columns={"sum(cov)": "covsum", "mean(cov)": "covavg", "min(cov)": "covmin",
-                            "min(assigneddrvage)": "assigneddrvy", "min(agey)": "agey", "min(vhlevel)": "vhlevelb1", "vehage": "vehagen1"})
-    df_summ['vehcnt'] = df.groupby(['mvstate', 'productgen', 'policy']).agg({
-        'cov': 'count'}).reset_index['cov']
+    #df_summ = df.groupby(['policy'],as_index=False).agg(bdayy = pd.NamedAgg(column='bday',aggfunc = max), bdayo = pd.NamedAgg(column='bday',aggfunc = min))
+    df_summ = df.groupby(['mvstate', 'productgen', 'policy'], as_index=False).agg(
+        duemon=pd.NamedAgg(column='duemon', aggfunc=max), agent=pd.NamedAgg(column='agent', aggfunc=max), aaa_ec=pd.NamedAgg(column='aaa_ec', aggfunc=max),
+        vehfullcov=pd.NamedAgg(column='vehfullcov', aggfunc=max), premier=pd.NamedAgg(column='premier', aggfunc=max), premier2=pd.NamedAgg(column='premier2', aggfunc=max),
+        mulprod=pd.NamedAgg(column='mulprod', aggfunc=max), tenure=pd.NamedAgg(column='tenure', aggfunc=max), cved=pd.NamedAgg(column='cved', aggfunc=max),
+        renew_1mon=pd.NamedAgg(column='renew_1mon', aggfunc=max), renew_2mon=pd.NamedAgg(column='renew_2mon', aggfunc=max), member=pd.NamedAgg(column='member', aggfunc=max),
+        prins=pd.NamedAgg(column='prins', aggfunc=max), assigneddrvage=pd.NamedAgg(column='assigneddrvage', aggfunc=max), assigneddrvy=pd.NamedAgg(column='assigneddrvage', aggfunc=min),
+        ageo=pd.NamedAgg(column='ageo', aggfunc=max), vhlevel=pd.NamedAgg(column='vhlevel', aggfunc=max), vhlevelb1=pd.NamedAgg(column='vhlevel', aggfunc=min), eft1=pd.NamedAgg(column='eft1', aggfunc=max),
+        pifd=pd.NamedAgg(column='pifd', aggfunc=max), aaadrivedisc=pd.NamedAgg(column='aaadrivedisc', aggfunc=max), covsum=pd.NamedAgg(column='cov', aggfunc=sum), covavg=pd.NamedAgg(column='cov', aggfunc=np.mean),
+        covmax=pd.NamedAgg(column='cov', aggfunc=max), covmin=pd.NamedAgg(column='cov', aggfunc=min), agey=pd.NamedAgg(column='agey', aggfunc=min), vehagen1=pd.NamedAgg(column='vehage', aggfunc=min))
+    df_summ[['mvstate', 'productgen', 'policy', 'vehcnt']] = df.groupby(
+        ['mvstate', 'productgen', 'policy'], as_index=False)['cov'].count()
     df_creation_logging(df_summ, 'Hhld1')
     df_summ.to_sql("Hhld1", con=sqliteConnection, if_exists='replace')
 
@@ -1164,29 +1202,24 @@ def Renew(InfMon):
     # Converting source df data into datafram.
     df1 = pd.read_sql_query("select * from driver", sqliteConnection)
     # handling data frame column case senstivity.#
-    # df_lower_colNames(df, 'driver')
-    # Drop columns from source df data in datafram.
+    df_lower_colNames(df1, 'driver')
+    # Drop column name in source df data in dataframe
     df1 = df1.drop(columns="birthdte")
     # Rename columns in source df data in datafram.
     df1 = df1.rename(columns={"birthdte1": "birthdte"})
     # Converting source df data into datafram.
-    df2 = pd.read_sql_query("select * from drivergenii ", sqliteConnection)
+    df2 = pd.read_sql_query(
+        "select * from drivergenii{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-    # df_lower_colNames(df, 'drivergenii')
+    df_lower_colNames(df2, 'drivergenii')
     df2 = df2[['policy', 'drivtype', 'drvstatus', 'birthdte']]
     df = pd.concat([df1, df2], ignore_index=True, sort=False)
-    df['birthdte'] = df['birthdte'].astype(str)
-    '''
-    df = pd.DataFrame(columns = ['bday1'])
-    df['bday1'].append(df['birthdte'].str.slice(4, 6).astype(int), df['birthdte'].str.slice(
-        6, 8).astype(int), df['birthdte'].str.slice(0, 4).astype(int)).reset_index()
-    df['bday'] = pd.to_datetime(
-        df['bday1'], format = "%m/%d/%Y",errors='coerce')
-    '''
-    df['bday'] = mdy(df['birthdte'].str.slice(4, 6).astype(int), df['birthdte'].str.slice(
-        6, 8).astype(int), df['birthdte'].str.slice(0, 4).astype(int))
+    df['birthdte'] = pd.to_datetime(df['birthdte'])
+    df['bday'] = df.birthdte.dt.strftime('%y%m%d').astype(float)
+    df['policy'] = df['policy'].astype(float)
+    # ((df['birthdte'].str.slice(4, 6).astype(int), df['birthdte'].str.slice(6, 8).astype(int), df['birthdte'].str.slice(0, 4).astype(int))
     # if drivtype="A" or drvstatus="A"; # Manual effort require.
-    df.loc[(df.drivtype == 'A') | (df.drvstatus == 'A')]
+    df = df.loc[(df.drivtype == 'A') | (df.drvstatus == 'A')]
     # Drop columns in the target df data in datafram.
     df = df.drop(columns="birthdte")
     df = df_remove_indexCols(df)
@@ -1211,9 +1244,16 @@ def Renew(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'driver')
     df = df_remove_indexCols(df)
-    df_summ = df.groupby(['policy']).agg(
-        {'bday': 'max', 'bday': 'min'}).reset_index()
-    df = df.rename(columns={"max(bday)": "bdayy", "min(bday)": "bdayo"})
+    #df_summ = df.groupby(['policy'], as_index=False).agg({'bday': 'max', 'bday': 'min'})
+    #df_summ = df_summ.rename(columns={"max(bday)": "bdayy", "min(bday)": "bdayo"})
+    df_summ = df.groupby(['policy'], as_index=False).agg(bdayy=pd.NamedAgg(
+        column='bday', aggfunc=max), bdayo=pd.NamedAgg(column='bday', aggfunc=min))
+    df_summ['bdayy'] = pd.to_datetime(df_summ["bdayy"])
+    df_summ['bdayo'] = pd.to_datetime(df_summ["bdayo"])
+    df_summ['bdayy_year'], df_summ['bdayy_month'], df_summ['bdayy_day'] = df_summ[
+        'bdayy'].dt.year, df_summ['bdayy'].dt.month, df_summ['bdayy'].dt.day
+    df_summ['bdayo_year'], df_summ['bdayo_month'], df_summ['bdayo_day'] = df_summ[
+        'bdayo'].dt.year, df_summ['bdayo'].dt.month, df_summ['bdayo'].dt.day
     df_creation_logging(df_summ, 'driver')
     df_summ.to_sql("driver", con=sqliteConnection, if_exists='replace')
 
@@ -1224,9 +1264,10 @@ def Renew(InfMon):
     # Open connection to Sqlite work data base
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
     # Converting source df data into datafram.
-    df = pd.read_sql_query("select * from inforce", sqliteConnection)
+    df = pd.read_sql_query(
+        "select * from inforce{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-    df_lower_colNames(df, 'inforce')
+    df_lower_colNames(df, 'inforce{}'.format(InfMon))
     df = df[['policy', 'termincep']]
     df['termincep1'] = df['termincep']
     df = df_remove_indexCols(df)
@@ -1246,20 +1287,20 @@ def Renew(InfMon):
     # Converting source df data into datafram.
     df1 = pd.read_sql_query("select * from termincep ", sqliteConnection)
     # handling data frame column case senstivity.#
-    # df_lower_colNames(df, 'termincep')
+    #df_lower_colNames(df, 'termincep')
     # Rename columns in source df data in datafram.
     df1 = df1.rename(columns={"termincep1": "termincep"})
     # Drop columns from source df data in datafram.
     df1 = df1.drop(columns="termincep")
     # Converting source df data into datafram.
-    df2 = pd.read_sql_query("select * from inforcegenii ", sqliteConnection)
+    df2 = pd.read_sql_query(
+        "select * from inforcegenii{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
     df = pd.concat([df1, df2], ignore_index=True, sort=False)
-    # df_lower_colNames(df, 'inforcegenii')
+    # df_lower_colNames(df, 'inforcegenii{}'.format(InfMon)
     df = df[['policy', 'termincep']]
-    df['termincep'] = df['termincep'].astype(str)
-    df['incep'] = mdy(df['termincep'].str.slice(4, 6).astype(int), df['termincep'].str.slice(
-        6, 8).astype(int), df['termincep'].str.slice(1, 4).astype(int))
+    df['termincep'] = pd.to_datetime(df['termincep'])
+    df['incep'] = df.termincep.dt.strftime('%y%m%d').astype(float)
     # Drop columns in the target df data in datafram.
     df = df.drop(columns="termincep")
     df = df_remove_indexCols(df)
@@ -1277,7 +1318,7 @@ def Renew(InfMon):
     var incep;
     output out=termincep (drop=_type_ _freq_) min=;
     run;
-
+    
     else if primaryclass in (1254 1255 1354 1355 2254 2255 2354 2355 1256 1257 1356 1357 2256 2257 2356 2357 1754 1755 1704 1705 2754 2755
     2704 2705 1756 1757 1706 1707 2756 2757 2706 2707 8064 8065 8164 8165 8074 8075 8174 8175 8084 8085 8184 8185 8094 8095 8194 8195 8066
     8067 8166 8167 8076 8077 8176 8177 8086 8087 8186 8187 8096 8097 8196 8197 8460 8463 8660 8663 8470 8473 8670 8673 8480 8483 8680 8683
@@ -1288,7 +1329,11 @@ def Renew(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'termincep')
     df = df_remove_indexCols(df)
-    df_summ = df.groupby(['policy']).reset_index()
+    df_summ = df.groupby(['policy'], as_index=False).agg(
+        incep=pd.NamedAgg(column='incep', aggfunc=min))
+    df_summ['incep'] = pd.to_datetime(df["incep"])
+    df_summ['incep_year'], df_summ['incep_month'], df_summ['incep_day'] = df_summ[
+        'incep'].dt.year, df_summ['incep'].dt.month, df_summ['incep'].dt.day
     df_creation_logging(df_summ, 'termincep')
     df_summ.to_sql("termincep", con=sqliteConnection, if_exists='replace')
 
@@ -1299,12 +1344,13 @@ def Renew(InfMon):
     # Connections to Sqlite DB and fetch all data from source table to process
     # Please check if any SAS functions are not converted in SqLite query.
     try:
-        sql = """DROP TABLE IF EXISTS Hhld2;create table Hhld2 as select a.*,floor(sas2py_year(c.incep)-sas2py_year(b.BdayY)
-            +(sas2py_month(c.incep)-sas2py_month(b.BdayY))/12+(sas2py_day(c.incep)-sas2py_da
-            y(b.BdayY))/365) as AgeY1,floor(sas2py_year(c.incep)-sas2py_year(b.BdayO)+(sas2p
-            y_month(c.incep)-sas2py_month(b.BdayO))/12+(sas2py_day(c.incep)-sas2py_day(b.Bda
-            yO))/365) as AgeO1 from Hhld1 a left join driver b on a.policy=b.policyleft join
-            termincep c on a.policy=c.policy"""
+        sql = """DROP TABLE IF EXISTS Hhld2;create table Hhld2 as select a.*,
+			((c.incep_year)-(b.bdayy_year)+((c.incep_month)-(b.bdayy_month))/12+((c.incep_day)-(b.bdayy_day))/365) as AgeY1,
+			((c.incep_year)-(b.bdayo_year)+((c.incep_month)-(b.bdayo_month))/12+((c.incep_day)-(b.bdayo_day))/365) as AgeO1
+			from Hhld1 a left join driver b 
+			on a.policy=b.policy
+			left join termincep c
+			on a.policy=c.policy"""
         sql = mcrResl(sql)
         tgtSqliteTable = "Hhld2"
         procSql_standard_Exec(SQLitePythonWorkDb, sql, tgtSqliteTable)
@@ -1323,6 +1369,8 @@ def Renew(InfMon):
     df = pd.read_sql_query("select * from Hhld2 ", sqliteConnection)
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'Hhld2')
+    df['agey1'] = df['agey1'].apply(np.floor)
+    df['ageo1'] = df['ageo1'].apply(np.floor)
     # length AgentType $40; # Manual effort require.
     df['agenttype'] = "Unknown"
 
@@ -1364,8 +1412,8 @@ def Renew(InfMon):
 
     # ***Start manual effort here...
     # else Coverage="Mixed";
-    df['coverage'] = ['Full Cov' if df.CovSum ==
-                      'VehCnt' else 'Lia Only' if df.covmax == 0 else 'Mixed']
+    df['coverage'] = ['Full Cov' if x == 'VehCnt' else 'Lia Only' if y ==
+                      0 else 'Mixed' for x, y in zip(df['covsum'], df['covmax'])]
     # End manual effort.***'''
 
     # length PremierGrp $40; # Manual effort require.
@@ -1427,11 +1475,15 @@ def Renew(InfMon):
     df.loc[df.productgen == 'Gen1', 'pif'] = ""
     # length PriorInsStatus $40; # Manual effort require.
 
-    # ***Start manual effort here...
+    # ***Start manual effort here..
     # if mvstate in ('WV' 'IA') then do;
-    df = df.loc[df['mvstate'].isin(['WV' 'IA'])]
-    df['priorinsstatus'] = ["<100/300" if x in [1212, 1222] else "20/40" if x in [1112,
-                                                                                  1122] else ">=100/300" if x in [1312, 1322] else "N/A" for x in df['prins']]
+    df.loc[(df['mvstate'].isin(['WV', 'IA'])), 'priorinsstatus'] = "N/A"
+    df.loc[(df['mvstate'].isin(['WV', 'IA'])) & (
+        df['prins'].isin([1212, 1222])), 'priorinsstatus'] = "<100/300"
+    df.loc[(df['mvstate'].isin(['WV', 'IA'])) & (
+        df['prins'].isin([1112, 1122])), 'priorinsstatus'] = "20/40"
+    df.loc[(df['mvstate'].isin(['WV', 'IA'])) & (
+        df['prins'].isin([1312, 1322])), 'priorinsstatus'] = ">=100/300"
 
     # if prins in (1212 1222) then PriorInsStatus="<100/300";
     # else if prins in (1112 1122) then PriorInsStatus="20/40";
@@ -1442,9 +1494,13 @@ def Renew(InfMon):
 
     # ***Start manual effort here...
     # if mvstate in ('MN') then do;
-    df = df.loc[df['mvstate'].isin(['MN'])]
-    df['priorinsstatus'] = ["<100/300" if x in [1212, 1222] else "30/60" if x in [1112,
-                                                                                  1122] else ">=100/300" if x in [1312, 1322] else "N/A" for x in df['prins']]
+    df.loc[(df['mvstate'].isin(['MN'])), 'priorinsstatus'] = "N/A"
+    df.loc[(df['mvstate'].isin(['MN'])) & (df['prins'].isin(
+        [1212, 1222])), 'priorinsstatus'] = "<100/300"
+    df.loc[(df['mvstate'].isin(['MN'])) & (
+        df['prins'].isin([1112, 1122])), 'priorinsstatus'] = "30/60"
+    df.loc[(df['mvstate'].isin(['MN'])) & (df['prins'].isin(
+        [1312, 1322])), 'priorinsstatus'] = ">=100/300"
 
     # if prins in (1212 1222) then PriorInsStatus="<100/300";
     # else if prins in (1112 1122) then PriorInsStatus="30/60";
@@ -1454,12 +1510,14 @@ def Renew(InfMon):
     # End manual effort.***
 
     # ***Start manual effort here...
-    if (df['mvstate'].isin(['WI', 'KY', 'OH', 'TN', 'GA', 'IN', 'NE', 'ND'])).any():
-        df = df.loc[df['mvstate'].isin(
-            ['WI', 'KY', 'OH', 'TN', 'GA', 'IN', 'NE', 'ND'])]
-        df['priorinsstatus'] = ["<100/300" if x in [1212, 1222] else "25/50" if x in [1112,
-            1122] else ">=100/300" if x in [1312, 1322] else "N/A" for x in df['prins']]
-
+    df.loc[(df['mvstate'].isin(['WI', 'KY', 'OH', 'TN', 'GA',
+                                'IN', 'NE', 'ND'])), 'priorinsstatus'] = "N/A"
+    df.loc[(df['mvstate'].isin(['WI', 'KY', 'OH', 'TN', 'GA', 'IN', 'NE', 'ND'])) & (
+        df['prins'].isin([1212, 1222])), 'priorinsstatus'] = "<100/300"
+    df.loc[(df['mvstate'].isin(['WI', 'KY', 'OH', 'TN', 'GA', 'IN', 'NE', 'ND'])) & (
+        df['prins'].isin([1112, 1122])), 'priorinsstatus'] = "25/50"
+    df.loc[(df['mvstate'].isin(['WI', 'KY', 'OH', 'TN', 'GA', 'IN', 'NE', 'ND'])) & (
+        df['prins'].isin([1312, 1322])), 'priorinsstatus'] = ">=100/300"
     # if mvstate in ('WI' 'KY' 'OH' 'TN' 'GA' 'IN' 'NE' 'ND') then do;
     # if prins in (1212 1222) then PriorInsStatus="<100/300";
     # else if prins in (1112 1122) then PriorInsStatus="25/50";
@@ -1469,11 +1527,13 @@ def Renew(InfMon):
     # End manual effort.***
 
     # ***Start manual effort here...
-    if (df['mvstate'] == 'IL')):
-        df=df.loc[df.mvstate == 'IL']
-        df['priorinsstatus']=["<100/300" if x in [1212, 1222] else "<=25/50" if x in [1112,
-            1122] else ">=100/300" if x in [1312, 1322] else "N/A" for x in df['prins']]
-
+    df.loc[(df['mvstate'].isin(['IL'])), 'priorinsstatus'] = "N/A"
+    df.loc[(df['mvstate'].isin(['IL'])) & (df['prins'].isin(
+        [1212, 1222])), 'priorinsstatus'] = "<100/300"
+    df.loc[(df['mvstate'].isin(['IL'])) & (
+        df['prins'].isin([1112, 1122])), 'priorinsstatus'] = "<=25/50"
+    df.loc[(df['mvstate'].isin(['IL'])) & (df['prins'].isin(
+        [1312, 1322])), 'priorinsstatus'] = ">=100/300"
     # if mvstate = 'IL' then do;
     # if prins in (1212 1222) then PriorInsStatus="<100/300";
     # else if prins in (1112 1122) then PriorInsStatus="<=25/50";
@@ -1483,15 +1543,15 @@ def Renew(InfMon):
     # End manual effort.***
 
     # if productgen="Gen1" then PriorInsStatus=""; # Manual effort require.
-    df.loc[df.productgen == 'Gen1', 'priorinsstatus']=''
-    df.loc[df.agey1 == np.nan, 'agey1']='agey'
-    df.loc[df.agey1 == np.nan, 'agey1']='assigneddrvy'
+    df.loc[df.productgen == 'Gen1', 'priorinsstatus'] = ''
+    df.loc[df.agey1 == np.nan, 'agey1'] = df['agey']
+    df.loc[df.agey1 == np.nan, 'agey1'] = df['assigneddrvy']
     # if AgeY1=. then AgeY1=AgeY; # Manual effort require.
     # if AgeY1=. then AgeY1=AssignedDrvY; # Manual effort require.
     # length AgeYoungest $40; # Manual effort require.
     # if AgeY1>=65 then AgeYoungest=">64"; # Manual effort require.
-    df['ageyoungest']=[">64" if x >= 65 else "45-64" if x >=
-                         45 else "30-44" if x >= 30 else "25-29" if x >= 25 else "<25"]
+    df['ageyoungest'] = [">64" if x >= 65 else "45-64" if x >=
+                         45 else "30-44" if x >= 30 else "25-29" if x >= 25 else "<25" for x in df['agey1']]
     # ***Start manual effort here...
     # else if AgeY1>=45 then AgeYoungest="45-64";
     # End manual effort.***'''
@@ -1509,15 +1569,15 @@ def Renew(InfMon):
     # End manual effort.***'''
 
     # if AgeO1=. then AgeO1=AgeO; # Manual effort require.
-    df.loc[df.ageo1 == np.nan, 'ageo1'] = 'ageo'
-    df.loc[df.ageo1 == np.nan, 'ageo1'] = 'assigneddrvage'
+    df.loc[df.ageo1 == np.nan, 'ageo1'] = df['ageo']
+    df.loc[df.ageo1 == np.nan, 'ageo1'] = df['assigneddrvage']
     # if AgeO1=. then AgeO1=AssignedDrvAge; # Manual effort require.
     # length AgeOldest $40; # Manual effort require.
     # if AgeO1<25 then AgeOldest="<25"; # Manual effort require.
 
     # ***Start manual effort here...
     df['ageoldest'] = ["<25" if x < 25 else "25-29" if x <
-                       30 else "30-44" if x < 45 else "45-64" if x < 65 else ">64"]
+                       30 else "30-44" if x < 45 else "45-64" if x < 65 else ">64" for x in df['ageo1']]
 
     # else if AgeO1<30 then AgeOldest="25-29";
     # End manual effort.***'''
@@ -1615,12 +1675,13 @@ def Renew(InfMon):
     # if productgen="Gen1" then AAADrive=""; # Manual effort require.
     # Keep columns in the taget df data in datafram.
     df = df[['mem', 'agenttype', 'renew_2mon', 'multiprod', 'ageoldest', 'aaadrive', 'vehagen', 'cved', 'renew_1mon', 'policy', 'premiergrp', 'vhlevelw',
-             'duemon', 'ageyoungest', 'priorinsstatus', 'mvstate', 'eft', 'productgen', 'tenure', 'pif', 'vhlevelbnoveh', 'premiergrp2', 'coverage']]
+             'duemon', 'ageyoungest', 'priorinsstatus', 'mvstate', 'eft', 'productgen', 'tenure', 'pif', 'vhlevelb', 'noveh', 'premiergrp2', 'coverage']]
     df = df_remove_indexCols(df)
     logging.info(
         "Inf{} created successfully with {} records".format(InfMon, len(df)))
     # Push results data frame to Sqlite DB
-    df.to_sql("Inf{}".format(InfMon), con=sqliteConnection, if_exists='replace')
+    df.to_sql("Inf{}".format(InfMon),
+              con=sqliteConnection, if_exists='replace')
     # Close connection to Sqlite work data base
     sqliteConnection.close()
     #*******************************End of Data Step Process**************************************************#
@@ -1673,7 +1734,7 @@ def Renew(InfMon):
 	    if AAADriveDisc=1 :
     AAADrive="Yes"
 	'''Uncomment to execute the below sas macro'''
-    # Renew(<< Provide require args here >>)
+    #Renew(<< Provide require args here >>)
     """
 ### SAS Source Code Line Numbers START:549 & END:603.###
 
@@ -1707,7 +1768,7 @@ def Join1(InfMon):
         "select * from InfRen{}".format(InfRen1), sqliteConnection)
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'InfRen{}'.format(InfRen1))
-    df = df.loc[df.termeffmonth == 'InfRen1']
+    df = df.loc[df.termeffmonth == InfRen1]
     # if termeffmonth=&InfRen1; # Manual effort require.
     df = df_remove_indexCols(df)
     logging.info(
@@ -1736,7 +1797,7 @@ def Join1(InfMon):
             InfRenSubset{};ALTER TABLE InfRenSubset{}_sqlitesorted RENAME TO
             InfRenSubset{}""".format(InfRen1, InfRen1, InfRen1, InfRen1, InfRen1, InfRen1)
         sql = mcrResl(sql)
-        tgtSqliteTable = mcrResl("InfRenSubset&InfRen1_sqlitesorted")
+        tgtSqliteTable = mcrResl("InfRenSubset&InfRen1")
         procSql_standard_Exec(SQLitePythonWorkDb,sql,tgtSqliteTable)
     except:
        e = sys.exc_info()[0]
@@ -1754,7 +1815,7 @@ def Join1(InfMon):
         "select * from InfRen{}".format(InfRen2), sqliteConnection)
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'InfRen{}'.format(InfRen2))
-    df = df.loc[df.termeffmonth == 'InfRen1']
+    df = df.loc[df.termeffmonth == InfRen1]
     # if termeffmonth=&InfRen1; # Manual effort require.
     df = df_remove_indexCols(df)
     logging.info(
@@ -1839,8 +1900,8 @@ def Join1(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """/*DROP TABLE IF EXISTS Renew5; 
         create table Renew5 as select c.*, d.mvstate as renew32 from (select a.*,
@@ -1903,7 +1964,7 @@ def Join1(InfMon):
             if renew12 = "" and renew22 = "" :
     renew_2mon  = 0
         '''Uncomment to execute the below sas macro'''
-    # Join1(<< Provide require args here >>)
+    #Join1(<< Provide require args here >>)
 
     ### SAS Source Code Line Numbers START:606 & END:643.###
     """
@@ -1929,11 +1990,12 @@ def Join2(InfMon):
         "select * from InfRen{}".format(InfRen1), sqliteConnection)
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'InfRen{}'.format(InfRen1))
-    df = df.loc[df.termeffmonth == 'InfRen1']
+    df = df.loc[df.termeffmonth == InfRen1]
+    df = df.drop(columns=["level_0"])
     # if termeffmonth=&InfRen1; # Manual effort require.
     # Push results data frame to Sqlite DB
     logging.info(
-        "InfRenSubset{} created successfully with {} records".format(InfRen1len(df)))
+        "InfRenSubset{} created successfully with {} records".format(InfRen1, len(df)))
     df.to_sql("InfRenSubset{}".format(InfRen1),
               con=sqliteConnection, if_exists='replace')
     # Close connection to Sqlite work data base
@@ -2064,7 +2126,7 @@ def Join2(InfMon):
     renew_1mon  = 0
 
     Uncomment to execute the below sas macro
-    # Join2(<< Provide require args here >>)
+    #Join2(<< Provide require args here >>)
     '''
     ### SAS Source Code Line Numbers START:646 & END:653.###
     """ERROR: Unable to convert the below SAS block/code into python
@@ -2078,7 +2140,7 @@ def Join2(InfMon):
     run;
     """
 
-
+'''
 sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
 stuff = InfMon0
 while(stuff < LatestMon):
@@ -2089,7 +2151,7 @@ while(stuff < LatestMon):
 df = pd.DataFrame()
 df['stuff'] = stuff
 df.to_sql("junk1", con=sqliteConnection, if_exists='replace')
-
+'''
 ### SAS Source Code Line Numbers START:656 & END:656.###
 '''SAS Comment:*** AJS: Dimension processing for database population; '''
 ### SAS Source Code Line Numbers START:658 & END:1495.###
@@ -2123,7 +2185,7 @@ def PopDB(InfMon):
 
     df['product'] = 'AUT'
     df['migrind'] = 'N'
-    df.rename(columns={'mvstate': 'state'})
+    df = df.rename(columns={'mvstate': 'state'})
     # length agttyp $10; # Manual effort require.
     df['agttyp'] = df['agenttype']
     # length dim $25; # Manual effort require.
@@ -2131,7 +2193,7 @@ def PopDB(InfMon):
     # length dimval $40; # Manual effort require.
     df['dimval'] = ' '
     # length tenuretxt $40; # Manual effort require.
-    df['tenuretxt'] = ['0' if (x == np.nan) & (x == 0) else '1' if x == 1 else '2' if x ==
+    df['tenuretxt'] = ['0' if (x == np.nan) | (x == 0) else '1' if x == 1 else '2' if x ==
                        2 else '3-4' if (x == 3) | (x == 4) else '5+' if x >= 5 else x for x in df['tenure']]
     # if tenure=. or tenure=0 then tenuretxt='0'; # Manual effort require.
 
@@ -2221,7 +2283,8 @@ def PopDB(InfMon):
     logging.info(
         "Inf{} created successfully with {} records".format(InfMon, len(df)))
     # Push results data frame to Sqlite DB
-    df.to_sql("Inf{}".format(InfMon), con=sqliteConnection, if_exists='replace')
+    df.to_sql("Inf{}".format(InfMon),
+              con=sqliteConnection, if_exists='replace')
     # Close connection to Sqlite work data base
     sqliteConnection.close()
     #*******************************End of Data Step Process**************************************************#
@@ -2238,65 +2301,17 @@ def PopDB(InfMon):
     '''
 
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'premiergrp']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryPremier")
-
-    grouped_df.to_sql("summaryPremier", con=sqliteConnection,
-                      if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'premiergrp']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryPremier")
+    df.to_sql("summaryPremier", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''
@@ -2312,7 +2327,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryPremier')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
+    #df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'ALL AGENTS'
     # if PremierGrp=' ' then PremierGrp='Total'; # Manual effort require.
@@ -2329,12 +2344,12 @@ def PopDB(InfMon):
     # End manual effort.***
 
     df['dimval'] = df['premiergrp']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Premier'
     df['dimseq'] = 1
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["premiergrp", "_type_"])
+    df = df.drop(columns=["premiergrp"])
     # Push results data frame to Sqlite DB
     logging.info(
         "summaryPremier created successfully with {} records".format(len(df)))
@@ -2375,8 +2390,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -2399,65 +2414,17 @@ def PopDB(InfMon):
     '''
 
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'MultiProd']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryMultiProd")
-
-    grouped_df.to_sql("summaryMultiProd",
-                      con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'multiprod']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryMultiProd")
+    df.to_sql("summaryMultiProd", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -2471,7 +2438,7 @@ def PopDB(InfMon):
     df = pd.read_sql_query("select * from summaryMultiProd ", sqliteConnection)
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryMultiProd')
-    df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
+    #df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
@@ -2482,18 +2449,18 @@ def PopDB(InfMon):
     df['valseq'] = 2
     df['valseq'] = 3
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == 'Yes  ' else 2 if x ==
                     'No   ' else 3 if x == 'Total' else 9 for x in df['multiprod']]
     # End manual effort.***
 
     df['dimval'] = df['multiprod']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Multiproduct'
     df['dimseq'] = 2
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["multiprod", "_type_"])
+    df = df.drop(columns=["multiprod"])
     df = df_remove_indexCols(df)
     logging.info(
         "summaryMultiProd created successfully with {} records".format(len(df)))
@@ -2535,8 +2502,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -2559,65 +2526,17 @@ def PopDB(InfMon):
     '''
 
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'Coverage']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryCoverage")
-
-    grouped_df.to_sql("summaryCoverage",
-                      con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'coverage']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryCoverage")
+    df.to_sql("summaryCoverage", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -2631,7 +2550,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryCoverage')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
+    #df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if Coverage=' ' then Coverage='Total'; # Manual effort require.
@@ -2642,19 +2561,19 @@ def PopDB(InfMon):
     df['valseq'] = 3
     df['valseq'] = 4
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == 'Full Cov' else 2 if x == 'Lia Only' else 3 if x ==
                     'Mixed   ' else 4 if x == 'Total   ' else 9 for x in df['coverage']]
 
     # End manual effort.***
 
     df['dimval'] = df['coverage']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Coverage'
     df['dimseq'] = 3
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["coverage", "_type_"])
+    df = df.drop(columns=["coverage"])
     # Push results data frame to Sqlite DB
     logging.info(
         "summaryCoverage created successfully with {} records".format(len(df)))
@@ -2695,8 +2614,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -2719,65 +2638,17 @@ def PopDB(InfMon):
     '''
 
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'NoVeh']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryNoVeh")
-
-    grouped_df.to_sql("summaryNoVeh", con=sqliteConnection,
-                      if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'noveh']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryNoVeh")
+    df.to_sql("summaryNoVeh", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -2791,7 +2662,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryNoVeh')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
+    #df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if NoVeh=' ' then NoVeh='Total'; # Manual effort require.
@@ -2803,19 +2674,19 @@ def PopDB(InfMon):
     df['valseq'] = 4
     df['valseq'] = 5
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == '1    ' else 2 if x == '2    ' else 3 if x ==
                     '3    ' else 4 if x == '>3   ' else 5 if x == 'Total' else 9 for x in df['noveh']]
 
     # End manual effort.***
 
     df['dimval'] = df['noveh']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Vehicle #'
     df['dimseq'] = 4
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["noveh", "_type_"])
+    df = df.drop(columns=["noveh"])
     # Push results data frame to Sqlite DB
     logging.info(
         "summaryNoVeh created successfully with {} records".format(len(df)))
@@ -2856,8 +2727,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -2880,65 +2751,17 @@ def PopDB(InfMon):
     '''
 
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'VehAgeN']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryVehAgeN")
-
-    grouped_df.to_sql("summaryVehAgeN", con=sqliteConnection,
-                      if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'vehagen']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryVehAgeN")
+    df.to_sql("summaryVehAgeN", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -2952,7 +2775,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryVehAgeN')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
+    #df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if VehAgeN=' ' then VehAgeN='Total'; # Manual effort require.
@@ -2965,18 +2788,18 @@ def PopDB(InfMon):
     df['valseq'] = 5
     df['valseq'] = 6
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == '0-1  ' else 2 if x == '2-5  ' else 3 if x == '6-10 ' else 4 if x ==
                     '11-15' else 5 if x == '>15  ' else 6 if x == 'Total' else 9 for x in df['vehagen']]
     # End manual effort.***
 
     df['dimval'] = df['vehagen']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Newest Veh Age'
     df['dimseq'] = 5
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["vehagen", "_type_"])
+    df = df.drop(columns=["vehagen"])
     df = df_remove_indexCols(df)
     logging.info(
         "summaryVehAgeN created successfully with {} records".format(len(df)))
@@ -3018,8 +2841,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -3029,7 +2852,7 @@ def PopDB(InfMon):
        e = sys.exc_info()[0]
        logging.error('Table creation/update is failed.')
        logging.error('Error - {}'.format(e))
-'''
+	'''
     '''SAS Comment:* Membership processing; '''
 
     '''WARNING: Below SAS step has not converted in this release.
@@ -3042,63 +2865,17 @@ def PopDB(InfMon):
     '''
 
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    grp_lst = ['state', 'agttyp', 'system', 'Mem']  # Take the columns in Class
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryMem")
-
-    grouped_df.to_sql("summaryMem", con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'mem']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryMem")
+    df.to_sql("summaryMem", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -3112,7 +2889,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryMem')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
+    #df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if Mem=' ' then Mem='Total'; # Manual effort require.
@@ -3122,19 +2899,19 @@ def PopDB(InfMon):
     df['valseq'] = 2
     df['valseq'] = 3
     df['valseq'] = 9
-    # end;'''
+    #end;'''
 
     df['valseq'] = [1 if x == 'Yes  ' else 2 if x ==
                     'No   ' else 3 if x == 'Total' else 9 for x in df['mem']]
     # End manual effort.***
 
     df['dimval'] = df['mem']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Membership'
     df['dimseq'] = 6
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["mem", "_type_"])
+    df = df.drop(columns=["mem"])
     # Push results data frame to Sqlite DB
     logging.info(
         "summaryMem created successfully with {} records".format(len(df)))
@@ -3175,8 +2952,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -3186,7 +2963,7 @@ def PopDB(InfMon):
        e = sys.exc_info()[0]
        logging.error('Table creation/update is failed.')
        logging.error('Error - {}'.format(e))
-'''
+	'''
     '''SAS Comment:* Oldest Driver processing; '''
 
     '''WARNING: Below SAS step has not converted in this release.
@@ -3199,65 +2976,17 @@ def PopDB(InfMon):
     '''
 
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'AgeOldest']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryAgeOldest")
-
-    grouped_df.to_sql("summaryAgeOldest",
-                      con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'ageoldest']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryAgeOldest")
+    df.to_sql("summaryAgeOldest", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -3271,7 +3000,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryAgeOldest')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
+    #df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if AgeOldest=' ' then AgeOldest='Total'; # Manual effort require.
@@ -3284,19 +3013,19 @@ def PopDB(InfMon):
     df['valseq'] = 5
     df['valseq'] = 6
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == '<25  ' else 2 if x == '25-29' else 3 if x == '30-44' else 4 if x == '45-64' else 5 if x == '>64  ' else 6 if x == 'Total'
                     else 9 for x in df['ageoldest']]
 
     # End manual effort.***
 
     df['dimval'] = df['ageoldest']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Oldest Driver'
     df['dimseq'] = 7
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["ageoldest", "_type_"])
+    df = df.drop(columns=["ageoldest"])
     # Push results data frame to Sqlite DB
     logging.info(
         "summaryAgeOldest created successfully with {} records".format(len(df)))
@@ -3337,8 +3066,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -3348,7 +3077,7 @@ def PopDB(InfMon):
        e = sys.exc_info()[0]
        logging.error('Table creation/update is failed.')
        logging.error('Error - {}'.format(e))
-'''
+	'''
     '''SAS Comment:* Youngest Driver processing; '''
 
     '''WARNING: Below SAS step has not converted in this release.
@@ -3361,65 +3090,17 @@ def PopDB(InfMon):
     '''
 
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'AgeYoungest']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryAgeYoungest")
-
-    grouped_df.to_sql("summaryAgeYoungest",
-                      con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'ageyoungest']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryAgeYoungest")
+    df.to_sql("summaryAgeYoungest", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -3434,7 +3115,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryAgeYoungest')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
+    #df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if AgeYoungest=' ' then AgeYoungest='Total'; # Manual effort require.
@@ -3447,19 +3128,19 @@ def PopDB(InfMon):
     df['valseq'] = 5
     df['valseq'] = 6
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == '<25  ' else 2 if x == '25-29' else 3 if x == '30-44' else 4 if x ==
                     '45-64' else 5 if x == '>64  ' else 6 if x == 'Total' else 9 for x in df['ageyoungest']]
 
     # End manual effort.***
 
     df['dimval'] = df['ageyoungest']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Youngest Driver'
     df['dimseq'] = 8
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["ageyoungest", "_type_"])
+    df = df.drop(columns=["ageyoungest"])
     df = df_remove_indexCols(df)
     logging.info(
         "summaryAgeYoungest created successfully with {} records".format(len(df)))
@@ -3501,8 +3182,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -3524,65 +3205,17 @@ def PopDB(InfMon):
     run;
     '''
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'tenuretxt']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryAgeTenuretxt")
-
-    grouped_df.to_sql("summaryTenuretxt",
-                      con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'tenuretxt']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryTenuretxt")
+    df.to_sql("summaryTenuretxt", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -3596,7 +3229,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryTenuretxt')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
+    #df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if tenuretxt=' ' then tenuretxt='Total'; # Manual effort require.
@@ -3609,18 +3242,18 @@ def PopDB(InfMon):
     df['valseq'] = 5
     df['valseq'] = 6
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == '0    ' else 2 if x == '1    ' else 3 if x == '2    ' else 4 if x == '3-4  ' else 5 if x == '5+   ' else 6 if x == 'Total'
                     else 9 for x in df['tenuretxt']]
     # End manual effort.***
 
     df['dimval'] = df['tenuretxt']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Tenure'
     df['dimseq'] = 9
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["tenuretxt", "_type_"])
+    df = df.drop(columns=["tenuretxt"])
     # Push results data frame to Sqlite DB
     logging.info(
         "summaryTenuretxt created successfully with {} records".format(len(df)))
@@ -3661,8 +3294,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -3684,63 +3317,17 @@ def PopDB(InfMon):
     run;
     '''
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    grp_lst = ['state', 'agttyp', 'system', 'EFT']  # Take the columns in Class
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryEFT")
-
-    grouped_df.to_sql("summaryEFT", con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'eft']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryEFT")
+    df.to_sql("summaryEFT", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -3754,7 +3341,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryEFT')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
+    #df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if EFT=' ' then EFT='Total'; # Manual effort require.
@@ -3764,18 +3351,18 @@ def PopDB(InfMon):
     df['valseq'] = 2
     df['valseq'] = 3
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == 'Yes  ' else 2 if x ==
                     'No   ' else 3 if x == 'Total' else 9 for x in df['eft']]
     # End manual effort.***
 
     df['dimval'] = df['eft']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'EFT'
     df['dimseq'] = 10
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["eft", "_type_"])
+    df = df.drop(columns=["eft"])
     df = df_remove_indexCols(df)
     logging.info(
         "summaryEFT created successfully with {} records".format(len(df)))
@@ -3817,8 +3404,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -3840,64 +3427,17 @@ def PopDB(InfMon):
     run;
     '''
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'CVEDtxt']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryCVED")
-
-    grouped_df.to_sql("summaryCVED", con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'cvedtxt']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryCVED")
+    df.to_sql("summaryCVED", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -3911,7 +3451,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryCVED')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
+    #df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if CVEDtxt=' ' then CVEDtxt='Total'; # Manual effort require.
@@ -3926,19 +3466,19 @@ def PopDB(InfMon):
     df['valseq'] = 7
     df['valseq'] = 8
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == '5    ' else 2 if x == '4    ' else 3 if x == '3    ' else 4 if x == '2    ' else 5 if x == '1    ' else 6 if x == '0    ' else 7 if x == '99   ' else 8 if x == 'Total'
                     else 9 for x in df['cvedtxt']]
 
     # End manual effort.***
 
     df['dimval'] = df['cvedtxt']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'CVED'
     df['dimseq'] = 11
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["cvedtxt", "_type_"])
+    df = df.drop(columns=["cvedtxt"])
     # Push results data frame to Sqlite DB
     logging.info(
         "summaryCVED created successfully with {} records".format(len(df)))
@@ -3979,8 +3519,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -4002,65 +3542,17 @@ def PopDB(InfMon):
     run;
     '''
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'PriorInsStatus']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryPriorIns")
-
-    grouped_df.to_sql("summaryPriorIns",
-                      con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'priorinsstatus']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryPriosIns")
+    df.to_sql("summaryPriorIns", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -4074,7 +3566,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryPriorIns')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
+    #df = df.loc[df['_type_'].isin(10, 11, 14, 15)]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if PriorInsStatus=' ' then PriorInsStatus='Total'; # Manual effort require.
@@ -4087,7 +3579,7 @@ def PopDB(InfMon):
     df['valseq'] = 4
     df['valseq'] = 5
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df = df.loc[df.state == 'MN']
     df['valseq'] = [1 if x == 'N/A      ' else 2 if x == '30/60    ' else 3 if x == '<100/300 ' else 4 if x == '>=100/300' else 5 if x == 'Total    '
                     else 9 for x in df['priorinsstatus']]
@@ -4101,7 +3593,7 @@ def PopDB(InfMon):
     df = df.loc[df['state'].isin(['WV', 'IA'])]
     df['valseq'] = [1 if x == 'N/A      ' else 2 if x == '20/40    ' else 3 if x == '<100/300 ' else 4 if x == '>=100/300' else 5 if x == 'Total    '
                     else 9 for x in df['priorinsstatus']]
-    # select (PriorInsStatus);
+    #select (PriorInsStatus);
     # when ('N/A ') valseq=1;
     # when ('20/40 ') valseq=2;
     # when ('<100/300 ') valseq=3;
@@ -4152,12 +3644,12 @@ def PopDB(InfMon):
     # End manual effort.***
 
     df['dimval'] = df['priorinsstatus']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'PriorIns'
     df['dimseq'] = 12
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["priorinsstatus", "_type_"])
+    df = df.drop(columns=["priorinsstatus"])
     df = df_remove_indexCols(df)
     logging.info(
         "summaryPriorIns created successfully with {} records".format(len(df)))
@@ -4199,8 +3691,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -4222,65 +3714,17 @@ def PopDB(InfMon):
     run;
     '''
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'VHlevelBtxt']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryVHlevelB")
-
-    grouped_df.to_sql("summaryVHlevelB",
-                      con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'vhlevelbtxt']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryVHlevelB")
+    df.to_sql("summaryVHlevelB", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -4294,7 +3738,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryVHlevelB')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
+    #df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if VHlevelBtxt=' ' then VHlevelBtxt='Total'; # Manual effort require.
@@ -4306,18 +3750,18 @@ def PopDB(InfMon):
     df['valseq'] = 4
     df['valseq'] = 5
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     # End manual effort.***
     df['valseq'] = [1 if x == 'N/A  ' else 2 if x == '1-3  ' else 3 if x == '4-7  ' else 4 if x == '8-11 ' else 5 if x == 'Total'
                     else 9 for x in df['vhlevelbtxt']]
 
     df['dimval'] = df['vhlevelbtxt']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Best Veh Hist'
     df['dimseq'] = 13
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["vhlevelbtxt", "_type_"])
+    df = df.drop(columns=["vhlevelbtxt"])
     df = df_remove_indexCols(df)
     logging.info(
         "summaryVHlevelB created successfully with {} records".format(len(df)))
@@ -4359,8 +3803,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -4380,65 +3824,17 @@ def PopDB(InfMon):
     run;
     '''
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'VHlevelWtxt']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryVHlevelW")
-
-    grouped_df.to_sql("summaryVVHlevelW",
-                      con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'vhlevelwtxt']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryVHlevelW")
+    df.to_sql("summaryVHlevelW", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -4452,7 +3848,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryVHlevelW')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
+    #df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if VHlevelWtxt=' ' then VHlevelWtxt='Total'; # Manual effort require.
@@ -4464,18 +3860,18 @@ def PopDB(InfMon):
     df['valseq'] = 4
     df['valseq'] = 5
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == 'N/A  ' else 2 if x == '1-3  ' else 3 if x == '4-7  ' else 4 if x == '8-11 ' else 5 if x == 'Total'
                     else 9 for x in df['vhlevelwtxt']]
     # End manual effort.***
 
     df['dimval'] = df['vhlevelwtxt']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Worst Veh Hist'
     df['dimseq'] = 14
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["vhlevelwtxt", "_type_"])
+    df = df.drop(columns=["vhlevelwtxt"])
     df = df_remove_indexCols(df)
     logging.info(
         "summaryVHlevelW created successfully with {} records".format(len(df)))
@@ -4517,8 +3913,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -4540,63 +3936,17 @@ def PopDB(InfMon):
     run;
     '''
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    grp_lst = ['state', 'agttyp', 'system', 'PIF']  # Take the columns in Class
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryPIF")
-
-    grouped_df.to_sql("summaryPIF", con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'pif']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryPIF")
+    df.to_sql("summaryPIF", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -4610,7 +3960,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryPIF')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
+    #df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if PIF=' ' then PIF='Total'; # Manual effort require.
@@ -4620,18 +3970,18 @@ def PopDB(InfMon):
     df['valseq'] = 2
     df['valseq'] = 3
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == 'Yes  ' else 2 if x ==
                     'No   ' else 3 if x == 'Total' else 9 for x in df['pif']]
     # End manual effort.***
 
     df['dimval'] = df['pif']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Paid In Full'
     df['dimseq'] = 15
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["pif", "_type_"])
+    df = df.drop(columns=["pif"])
     # Push results data frame to Sqlite DB
     logging.info(
         "summaryPIF created successfully with {} records".format(len(df)))
@@ -4671,8 +4021,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -4694,65 +4044,17 @@ def PopDB(InfMon):
     run;
     '''
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'premiergrp2']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryPremier2")
-
-    grouped_df.to_sql("summaryPremier2",
-                      con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'premiergrp2']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryPremier2")
+    df.to_sql("summaryPremier2", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -4766,7 +4068,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryPremier2')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
+    #df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if PremierGrp2=' ' then PremierGrp2='Total'; # Manual effort require.
@@ -4778,18 +4080,18 @@ def PopDB(InfMon):
     df['valseq'] = 4
     df['valseq'] = 5
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == 'Low' else 2 if x == 'Mid-Low' else 3 if x == 'Mid-High' else 4 if x == 'High' else 5 if x == 'Total'
                     else 9 for x in df['premiergrp2']]
     # End manual effort.***
 
     df['dimval'] = df['premiergrp2']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'Premier2'
     df['dimseq'] = 16
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["premiergrp2", "_type_"])
+    df = df.drop(columns=["premiergrp2"])
     # Push results data frame to Sqlite DB
     logging.info(
         "summaryPremier2 created successfully with {} records".format(len(df)))
@@ -4830,8 +4132,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -4853,65 +4155,17 @@ def PopDB(InfMon):
     run;
     '''
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from Inf{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from Inf{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'Inf{}'.format(InfMon))
-
-    # Take the columns in Class
-    grp_lst = ['state', 'agttyp', 'system', 'AAADrive']
-
-    id_list = ['DueMon', 'product', 'migrind']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list + ['renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "summaryAAADrive")
-
-    grouped_df.to_sql("summaryAAADrive",
-                      con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'product', 'migrind', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'aaadrive']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "summaryAAADrive")
+    df.to_sql("summaryAAADrive", con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -4925,7 +4179,7 @@ def PopDB(InfMon):
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'summaryAAADrive')
     # if _TYPE_ in (10,11,14,15); # Manual effort require.
-    df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
+    #df = df.loc[df['_type_'].isin([10, 11, 14, 15])]
     # if agttyp=' ' then agttyp='All Agents'; # Manual effort require.
     df.loc[df['agttyp'].isnull(), 'agttyp'] = 'All Agents'
     # if AAADrive=' ' then AAADrive='Total'; # Manual effort require.
@@ -4935,18 +4189,18 @@ def PopDB(InfMon):
     df['valseq'] = 2
     df['valseq'] = 3
     df['valseq'] = 9
-    # end;'''
+    #end;'''
     df['valseq'] = [1 if x == 'Yes' else 2 if x == 'No' else 3 if x == 'Total'
                     else 9 for x in df['aaadrive']]
     # End manual effort.***
 
     df['dimval'] = df['aaadrive']
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     df['dim'] = 'AAADrive'
     df['dimseq'] = 17
     # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["aaadrive", "_type_"])
+    df = df.drop(columns=["aaadrive"])
     # Push results data frame to Sqlite DB
     logging.info(
         "summaryAAADrive created successfully with {} records".format(len(df)))
@@ -5017,9 +4271,11 @@ def PopDB(InfMon):
     # Concatenate the source data frames
     summary = pd.concat([Premier, MultiProd, Coverage, NoVeh, VehAgeN, Mem, AgeOldest, AgeYoungest, Tenuretxt,
                          EFT, CVED, PriorIns, VHlevelB, VHlevelW, PIF, Premier2, AAADrive], ignore_index=True, sort=False)
+    if 'level_0' in summary.columns:
+        summary = summary.drop(columns=["level_0"])
     # Push results data frame to Sqlite DB
-    df_creation_logging(summary)
-    summary.to_sql("summary", con=sqliteConnection, if_exists='replace')
+    df_creation_logging(summary,"finalsummary{}".format(InfMon))
+    summary.to_sql("finalsummary{}".format(InfMon), con=sqliteConnection, if_exists='replace')
     # Close connection to Sqlite work data base
     sqliteConnection.close()
     #*******************************End of Data Step Process**************************************************#
@@ -5035,6 +4291,8 @@ def PopDB(InfMon):
         "select * from finalsummary{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'finalsummary{}'.format(InfMon))
+    if 'level_0' in df.columns:
+        df = df.drop(columns=["level_0"])
     # Push results data frame to Sqlite DB
     logging.info(
         "finalsummary{} created successfully with {} records".format(InfMon, len(df)))
@@ -5056,9 +4314,11 @@ def PopDB(InfMon):
     df_lower_colNames(df, 'finalsummary{}'.format(InfMon))
     # Converting source df data into datafram.
     df['agttyp'] = 'Captive/EA'
+    if 'level_0' in df.columns:
+        df = df.drop(columns=["level_0"])
     # Push results data frame to Sqlite DB
     logging.info(
-        "finalsummaryCaptiveEA{} created successfully with {} records".format(InMon, len(df)))
+        "finalsummaryCaptiveEA{} created successfully with {} records".format(InfMon, len(df)))
     df.to_sql("finalsummaryCaptiveEA{}".format(InfMon),
               con=sqliteConnection, if_exists='replace')
     # Close connection to Sqlite work data base
@@ -5073,68 +4333,19 @@ def PopDB(InfMon):
     output out=finalsummary2CaptiveEA&InfMonsum=;
     run;
     '''
+
     sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-
-    df = pd.read_sql_query(
-        "select * from finalsummaryCaptiveEA{}".format(InfMon), sqliteConnection)
-
+    df = pd.read_sql_query("select * from finalsummaryCaptiveEA{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
-
     df_lower_colNames(df, 'finalsummaryCaptiveEA{}'.format(InfMon))
-
-    grp_lst = ['state', 'agttyp', 'system', 'dimseq',
-               'valseq']  # Take the columns in Class
-
-    id_list = ['DueMon', 'system', 'product', 'agttyp', 'state', 'migrind', 'dim',
-               'dimseq', 'dim', 'dimseq', 'dimval', 'valseq']  # Take the columns in ID
-
-    grouped_df = pd.DataFrame()
-
-    cnt = 0
-
-    df_0 = df.drop(columns=grp_lst)
-
-    df_0_summ = df_0[['nfrccnt', 'renew_1mon', 'renew_2mon']].sum()
-
-    for i in range(1, len(grp_lst)+1):
-
-        for j in itertools.combinations(grp_lst, i):
-
-            cnt = cnt + 1
-
-            df1 = df.groupby(list(j))[
-                ['nfrccnt', 'renew_1mon', 'renew_2mon']].sum().reset_index()
-
-            df2 = df.sort_values(list(j)+id_list)
-
-            df2 = df2[list(j)+id_list]
-
-            df2['IsFirst'], df2['IsLast'] = [False, False]
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsFirst'].head(1).index, 'IsFirst'] = True
-
-            df2.loc[df2.groupby(list(j) + id_list)
-                    ['IsLast'].tail(1).index, 'IsLast'] = True
-
-            df2 = df2[df2['IsLast']]
-
-            df2 = df2.drop(columns=['IsFirst', 'IsLast'])
-
-            resdf = pd.merge(df1, df2, on=list(j), how='inner')
-
-            grouped_df = grouped_df.append(resdf, ignore_index=True)
-
-    grouped_df = grouped_df.append(df_0_summ, ignore_index=True)
-
-    grouped_df = grouped_df[grp_lst+id_list +
-                            ['nfrccnt', 'renew_1mon', 'renew_2mon']]
-
-    df_creation_logging(grouped_df, "finalsummary2CaptiveEA{}".format(InfMon))
-
-    grouped_df.to_sql("summaryAAADrive{}".format(InfMon),
-                      con=sqliteConnection, if_exists='replace')
-
+    str_cols = set(df.select_dtypes(include = ['object', 'string']).columns)
+    agg_cols = {'duemon', 'system', 'product', 'agttyp', 'state', 'migrind', 'dimseq', 'valseq', 'renew_1mon', 'renew_2mon'}
+    final_cols = list(agg_cols.intersection(str_cols))
+    df[final_cols] = df[final_cols].fillna(value = '')
+    df = df.groupby(['state', 'agttyp', 'system', 'dimseq', 'valseq']).agg(
+        {'duemon' : max, 'product' : max, 'migrind' : max, 'renew_1mon' : max, 'renew_2mon' : max}).reset_index()
+    df_creation_logging(df, "finalsummary2CaptiveEA{}".format(InfMon))
+    df.to_sql("finalsummary2CaptiveEA{}".format(InfMon), con=sqliteConnection, if_exists='replace')
     sqliteConnection.close()
 
     '''*********************************************************************************
@@ -5148,11 +4359,9 @@ def PopDB(InfMon):
         "select * from finalsummary2CaptiveEA{}".format(InfMon), sqliteConnection)
     # handling data frame column case senstivity.#
     df_lower_colNames(df, 'finalsummary2CaptiveEA{}'.format(InfMon))
-    df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
-    df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
+    #df['renew1ratio'] = df['renew_1mon']/df['nfrccnt']
+    #df['renew2ratio'] = df['renew_2mon']/df['nfrccnt']
     # retain DueMon system product agttyp state migrind dim dimseq dim dimseq dimval valseq nfrccnt renew_1mon renew1ratio renew_2mon renew2ratio; # Manual effort require.
-    # Drop columns in the target df data in datafram.
-    df = df.drop(columns=["_freq_", "_type_"])
     # Push results data frame to Sqlite DB
     logging.info(
         "finalsummary2CaptiveEA{} created successfully with {} records".format(InfMon, len(df)))
@@ -5161,6 +4370,7 @@ def PopDB(InfMon):
     # Close connection to Sqlite work data base
     sqliteConnection.close()
     #*******************************End of Data Step Process**************************************************#
+    sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
     # Converting source finalsummary&InfMon data into datafram.
     finalsummary = pd.read_sql_query(
         "select * from finalsummary{}".format(InfMon), sqliteConnection)
@@ -5168,13 +4378,14 @@ def PopDB(InfMon):
     finalsummary2 = pd.read_sql_query(
         "select * from finalsummary2CaptiveEA{}".format(InfMon), sqliteConnection)
     # Concatenate the source data frames
-    finalsummaryout = pd.concat(
-        [finalsummary, finalsummary2], ignore_index=True, sort=False)
+    df = pd.concat([finalsummary, finalsummary2], ignore_index=True, sort=False)
     # Push results data frame to Sqlite DB
-    logging.info("finalsummaryout{} created successfully with {} records".format(InfMon, len(finalsummaryout)))
-    finalsummaryout.to_sql("finalsummaryout{}".format(
-        InfMon), con=sqliteConnection, if_exists='replace')
-
+    logging.info("finalsummaryout{} created successfully with {} records".format(InfMon, len(df)))
+    if 'level_0' in df.columns:
+        df = df.drop(columns=["level_0"])
+    df.to_sql("finalsummaryout{}".format(InfMon), con=sqliteConnection, if_exists='replace')
+    # Close connection to Sqlite work data base
+    sqliteConnection.close()
     ''' 
     Conversion of PROC SORT into Python code as it creates new sorted table in the sqllite db
     Some times this step isn't necessary based on the scenario of execution,hence it can be commented out if you want.
@@ -5226,7 +4437,8 @@ def PopDB(InfMon):
     # Drop indicator tmp columns
     fixempty = finalsummaryout_grouped[(finalsummaryout_grouped['IsFirst'])]
     fixempty = fixempty.drop(columns=['IsFirst', 'IsLast'])
-
+    if 'level_0' in fixempty.columns:
+        fixempty = fixempty.drop(columns=["level_0"])
     # Push results data frame to Sqlite DB
     logging.info(
         "fixempty{} created successfully with {} records".format(InfMon, len(fixempty)))
@@ -5269,8 +4481,8 @@ def PopDB(InfMon):
     """***************************************************
     Below Python Code Executes The Standard SAS PROC SQL.
     ******************************************************"""
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
+    #Connections to Sqlite DB and fetch all data from source table to process
+    #Please check if any SAS functions are not converted in SqLite query.
     try:
         sql = """*run;"""
         sql = mcrResl(sql)
@@ -5315,71 +4527,92 @@ def PopDB(InfMon):
         logging.error('Table creation/update is failed.')
         logging.error('Error - {}'.format(e))
     '''
+
     ### SAS Source Code Line Numbers START:1517 & END:1517.###
     '''SAS Comment:*** end first run block *************************************; '''
     ### SAS Source Code Line Numbers START:1520 & END:1520.###
     '''SAS Comment:*** subsequent runs *****************************************; '''
-    ### SAS Source Code Line Numbers START:1522 & END:1524.###
-    '''*********************************************************************************
-    Below python code is to execute standard SAS data step
-    *********************************************************************************'''
-    # Please Note - If any library references remove them accordingly post your code analysis.#
-    # Open connection to Sqlite work data base
-    sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
-    # Converting source df data into datafram.
-    df = pd.read_sql_query(
-        "select * from outfile_renewrtn_regautodb", sqliteConnection)
-    # handling data frame column case senstivity.#
-    df_lower_colNames(df, 'outfile_renewrtn_regautodb')
-    # Push results data frame to Sqlite DB
-    logging.info(
-        "outfile_renewrtn_regautodb_backup created successfully with {} records".format(len(df)))
-    df.to_sql("outfile_renewrtn_regautodb_backup",
-              con=sqliteConnection, if_exists='replace')
-    # Close connection to Sqlite work data base
-    sqliteConnection.close()
-    #*******************************End of Data Step Process**************************************************#
+### SAS Source Code Line Numbers START:1522 & END:1524.###
+'''*********************************************************************************
+Below python code is to execute standard SAS data step
+*********************************************************************************'''
+# Open connection to Sqlite work data base
+sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
+# reading the file from csv
+df = pd.read_csv(
+	"/data02/sas2py_poc/act/ipm_rrc/ipm_rrc_renratio_regional_auto/data/renewrtn_regautodb.csv")
+# lowering all columns
+df_lower_colNames(df, 'renewrtn_regautodb')
+# logging info
+df_creation_logging(df, "renewrtn_regautodb")
+# putting into the sqliteDB
+df.to_sql("renewrtn_regautodb",
+		  con=sqliteConnection, if_exists='replace', index=True)
+sqliteConnection.close()
 
-    ### SAS Source Code Line Numbers START:1527 & END:1530.###
+# Please Note - If any library references remove them accordingly post your code analysis.#
+# Open connection to Sqlite work data base
+sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
+# Converting source df data into datafram.
+df = pd.read_sql_query(
+	"select * from renewrtn_regautodb", sqliteConnection)
+# handling data frame column case senstivity.#
+df_lower_colNames(df, 'renewrtn_regautodb')
+# Push results data frame to Sqlite DB
+logging.info(
+	"renewrtn_regautodb_backup created successfully with {} records".format(len(df)))
+df.to_sql("outfile_renewrtn_regautodb_backup",
+		  con=sqliteConnection, if_exists='replace')
+# Close connection to Sqlite work data base
+sqliteConnection.close()
 
-    ''' Conversion of PROC SORT into Python code as it creates new sorted table in the sqllite db.
-    Some times this step isn't necessary based on the scenario of execution,hence it can be commented out if you want.'''
+# Please Note - If any library references remove them accordingly post your code analysis.#
+# Open connection to Sqlite work data base
+sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
+# Converting source df data into datafram.
+df = pd.read_sql_query(
+	"select * from renewrtn_regautodb where duemon < {}".format(InfMon2), sqliteConnection)
+# handling data frame column case senstivity.#
+df_lower_colNames(df, 'renewrtn_regautodb')
+# Push results data frame to Sqlite DB
+logging.info(
+	"renewrtn_regautodb_backup created successfully with {} records".format(len(df)))
+df.to_sql("outfile_renewrtn_regautodb_backup",
+		  con=sqliteConnection, if_exists='replace')
+# Close connection to Sqlite work data base
+sqliteConnection.close()
 
-    # Sql Code Start and End Lines - 1527&1530 #
-    '''***************************************************
-    Below Python Code Executes The Standard SAS PROC SQL.
-    ******************************************************'''
-    # Connections to Sqlite DB and fetch all data from source table to process
-    # Please check if any SAS functions are not converted in SqLite query.
-    '''
-    try:
-        sql = """DROP TABLE IF EXISTS outfile.renewrtn_regautodb_sqlitesorted;CREATE TABLE outfile.renewrtn_regautodb_sqlitesorted AS SELECT * FROM
-            outfile.renewrtn_regautodb WHERE DueMon < InfMon2 ORDER BY
-            DueMon,system,state,agttyp,dimseq,valseq;DROP TABLE
-            outfile.renewrtn_regautodb;ALTER TABLE outfile.renewrtn_regautodb_sqlitesorted
-            RENAME TO outfile.renewrtn_regautodb"""
-        sql = mcrResl(sql)
-        tgtSqliteTable = "outfile.renewrtn_regautodb_sqlitesorted"
-        procSql_standard_Exec(SQLitePythonWorkDb,sql,tgtSqliteTable)
-    except:
-        e = sys.exc_info()[0]
-        logging.error('Table creation/update is failed.')
-        logging.error('Error - {}'.format(e))
-    '''
+#*******************************End of Data Step Process**************************************************#
 
-    ### SAS Source Code Line Numbers START:1532 & END:1539.###
-    """ERROR: Unable to convert the below SAS block/code into python
-    data junk1;
-    stuff = &InfMon0;
-    do while (stuff < &LatestMon);
-    stuff = stuff + 1;
-    if MOD(stuff,100) = 13 then stuff = stuff + 88;
-    call execute ('%PopDB (InfMon ='||stuff||')');
-    end;
-    run;
-    """
+### SAS Source Code Line Numbers START:1527 & END:1530.###
 
-sqliteConnection = Sqlite3.connect(SQLitePythonWorkDb)
+''' Conversion of PROC SORT into Python code as it creates new sorted table in the sqllite db.
+Some times this step isn't necessary based on the scenario of execution,hence it can be commented out if you want.'''
+
+# Sql Code Start and End Lines - 1527&1530 #
+'''***************************************************
+Below Python Code Executes The Standard SAS PROC SQL.
+******************************************************'''
+# Connections to Sqlite DB and fetch all data from source table to process
+# Please check if any SAS functions are not converted in SqLite query.
+'''
+try:
+	sql = """DROP TABLE IF EXISTS outfile.renewrtn_regautodb_sqlitesorted;CREATE TABLE outfile.renewrtn_regautodb_sqlitesorted AS SELECT * FROM
+		outfile.renewrtn_regautodb WHERE DueMon < InfMon2 ORDER BY
+		DueMon,system,state,agttyp,dimseq,valseq;DROP TABLE
+		outfile.renewrtn_regautodb;ALTER TABLE outfile.renewrtn_regautodb_sqlitesorted
+		RENAME TO outfile.renewrtn_regautodb"""
+	sql = mcrResl(sql)
+	tgtSqliteTable = "outfile.renewrtn_regautodb_sqlitesorted"
+	procSql_standard_Exec(SQLitePythonWorkDb,sql,tgtSqliteTable)
+except:
+	e = sys.exc_info()[0]
+	logging.error('Table creation/update is failed.')
+	logging.error('Error - {}'.format(e))
+'''
+
+### SAS Source Code Line Numbers START:1532 & END:1539.###
+sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
 stuff = InfMon0
 while(stuff < LatestMon):
     stuff = stuff+1
@@ -5393,21 +4626,28 @@ df.to_sql("junk1", con=sqliteConnection, if_exists='replace')
 ### SAS Source Code Line Numbers START:1541 & END:1544.###
 '''**WARNING:Below steps are not included in logic calculation. Please amend them manually.
 drop frstdim cnt seqhold;'''
-# Converting source outfile.renewrtn_regautodb data into datafram.
-regautodb = pd.read_sql_query(
-    "select * from outfile_renewrtn_regautodb ", sqliteConnection)
-# Converting source fixempty&InfMon1 data into datafram.
+
+# Open connection to Sqlite work data base
+sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
+# Converting source regauto data into datafram.
+regauto = pd.read_sql_query(
+    "select * from renewrtn_regautodb", sqliteConnection)
+# Converting source fixempty data into datafram.
 fixempty1 = pd.read_sql_query(
     "select * from fixempty{}".format(InfMon1), sqliteConnection)
-# Converting source fixempty&InfMon2 data into datafram.
+# Converting source fixempty data into datafram.
 fixempty2 = pd.read_sql_query(
-    "select * from fixempty{}".formt(InfMon2), sqliteConnection)
+    "select * from fixempty{}".format(InfMon2), sqliteConnection)
 # Concatenate the source data frames
-outfiledb = pd.concat([regautodb, fixempty, fixempty2],
+outfiledb = pd.concat([regauto, fixempty1, fixempty2],
                       ignore_index=True, sort=False)
+if 'level_0' in outfiledb.columns:
+    outfiledb = outfiledb.drop(columns=["level_0"])
 # Push results data frame to Sqlite DB
-df_creation_logging(outfiledb)
+df_creation_logging(outfiledb, 'outfiledb')
 outfiledb.to_sql("outfiledb", con=sqliteConnection, if_exists='replace')
+# Close connection to Sqlite work data base
+sqliteConnection.close()
 
 ### SAS Source Code Line Numbers START:1546 & END:1548.###
 
@@ -5445,10 +4685,12 @@ sqliteConnection = sqlite3.connect(SQLitePythonWorkDb)
 df = pd.read_sql_query("select * from outfiledb ", sqliteConnection)
 # handling data frame column case senstivity.#
 df_lower_colNames(df, 'outfiledb')
+if 'level_0' in df.columns:
+    df = df.drop(columns=["level_0"])
 # Push results data frame to Sqlite DB
 logging.info(
-    "outfile_renewrtn_regautodb created successfully with {} records".format(len(df)))
-df.to_sql("outfile_renewrtn_regautodb",
+    "renewrtn_regautodb created successfully with {} records".format(len(df)))
+df.to_sql("renewrtn_regautodb",
           con=sqliteConnection, if_exists='replace')
 # Close connection to Sqlite work data base
 sqliteConnection.close()
