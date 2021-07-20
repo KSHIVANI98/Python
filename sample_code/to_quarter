@@ -1,0 +1,4 @@
+def qrtly_format(input_dataframe):
+    df = input_dataframe
+        df['DATE'] = df['DATE'].str.replace(':','-Q')
+        df['DATE'] = pd.to_datetime(df['DATE'])
